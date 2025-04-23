@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useAuth } from '../../firebase/AuthContext';
+import { db } from '../../firebase/config';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
 
 const BibleCommentary = () => {
   const [book, setBook] = useState('Genesis');
@@ -11,7 +14,9 @@ const BibleCommentary = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const commentaryRef = useRef(null);
+  const { currentUser } = useAuth();
 
   // Bible books array for dropdown
   const bibleBooks = [
@@ -41,7 +46,7 @@ const BibleCommentary = () => {
         const response = await fetch('/api/health');
         if (response.ok) {
           const data = await response.json();
-          console.log('Server health check for Bible Commentary:', data);
+          console.log('Server health check for 2:', data);
           setServerStatus('online');
           
           if (!data.env.apiKeySet) {
@@ -61,6 +66,84 @@ const BibleCommentary = () => {
     checkServerHealth();
   }, []);
 
+  // Save conversation to Firestore
+  const saveConversationToFirestore = async (updatedHistory) => {
+    try {
+      if (!currentUser) {
+        console.log('User not logged in, cannot save conversation history');
+        return;
+      }
+
+      // Format messages for storing
+      const formattedMessages = updatedHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date().toISOString()
+      }));
+
+      // If this is a new conversation
+      if (!currentConversationId) {
+        // Create a title from the book and chapter
+        const newTitle = `${book} ${chapter} Commentary`;
+        
+        // Create a new conversation document
+        const docRef = await addDoc(collection(db, 'mainBibleTools_bibleCommentary'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          title: newTitle,
+          book,
+          chapter,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          messages: formattedMessages
+        });
+        
+        setCurrentConversationId(docRef.id);
+        console.log('Created new commentary conversation with ID:', docRef.id);
+      } else {
+        // Get the existing conversation document
+        const conversationRef = doc(db, 'mainBibleTools_bibleCommentary', currentConversationId);
+        const conversationSnap = await getDoc(conversationRef);
+        
+        if (conversationSnap.exists()) {
+          // Update the existing conversation with new messages
+          await updateDoc(conversationRef, {
+            messages: formattedMessages,
+            updatedAt: serverTimestamp()
+          });
+          
+          console.log('Updated commentary conversation:', currentConversationId);
+        } else {
+          console.error('Conversation document not found');
+          // If the conversation was deleted, create a new one
+          const docRef = await addDoc(collection(db, 'mainBibleTools_bibleCommentary'), {
+            userId: currentUser.uid,
+            userEmail: currentUser.email,
+            title: `${book} ${chapter} Commentary`,
+            book,
+            chapter,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            messages: formattedMessages
+          });
+          
+          setCurrentConversationId(docRef.id);
+          console.log('Created replacement conversation with ID:', docRef.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving commentary to Firestore:', err);
+      // Don't show this error to user as it's not critical to functionality
+    }
+  };
+
+  // Reset conversation - use when selecting a new book/chapter
+  const resetConversation = () => {
+    setConversationHistory([]);
+    setCommentary('');
+    setCurrentConversationId(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -75,8 +158,8 @@ const BibleCommentary = () => {
     setIsLoading(true);
     setCommentary('');
     
-    // Reset conversation history when selecting a new chapter
-    setConversationHistory([]);
+    // Reset conversation when selecting a new chapter
+    resetConversation();
 
     try {
       console.log(`Fetching commentary for ${book} ${chapter}...`);
@@ -106,10 +189,16 @@ const BibleCommentary = () => {
       
       // Add the initial request to conversation history
       const initialQuery = `Commentary on ${book} chapter ${chapter}`;
-      setConversationHistory([
+      const newHistory = [
         { role: 'user', content: initialQuery },
         { role: 'assistant', content: data.commentary }
-      ]);
+      ];
+      setConversationHistory(newHistory);
+      
+      // Save to Firestore if user is logged in
+      if (currentUser) {
+        saveConversationToFirestore(newHistory);
+      }
     } catch (error) {
       console.error('Error fetching commentary:', error);
       setError(error.message || 'An unexpected error occurred');
@@ -172,19 +261,31 @@ const BibleCommentary = () => {
       console.log('Received follow-up response:', data);
       
       // Add the assistant's response to conversation history
-      setConversationHistory([
+      const finalHistory = [
         ...updatedHistory,
         { role: 'assistant', content: data.message }
-      ]);
+      ];
+      setConversationHistory(finalHistory);
+      
+      // Save updated conversation to Firestore
+      if (currentUser) {
+        saveConversationToFirestore(finalHistory);
+      }
     } catch (error) {
       console.error('Error getting follow-up response:', error);
       setError(error.message || 'An unexpected error occurred');
       
       // Add error message to conversation
-      setConversationHistory([
+      const finalHistory = [
         ...updatedHistory,
         { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }
-      ]);
+      ];
+      setConversationHistory(finalHistory);
+      
+      // Still save the conversation with the error message
+      if (currentUser) {
+        saveConversationToFirestore(finalHistory);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -235,6 +336,13 @@ const BibleCommentary = () => {
       {serverStatus === 'offline' && !error && (
         <div className="px-4 py-2 bg-red-100 border-l-4 border-red-500 text-red-700 text-sm">
           <span className="font-bold">Offline:</span> Server is not running
+        </div>
+      )}
+      
+      {/* User authentication notice */}
+      {!currentUser && (
+        <div className="px-4 py-2 bg-blue-100 border-l-4 border-blue-500 text-blue-700 text-sm">
+          <span className="font-bold">Note:</span> Commentary history will not be saved since you're not logged in
         </div>
       )}
       
