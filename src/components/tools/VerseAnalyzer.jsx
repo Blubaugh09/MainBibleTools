@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useAuth } from '../../firebase/AuthContext';
+import { db } from '../../firebase/config';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
 
 const VerseAnalyzer = () => {
   const [verseInput, setVerseInput] = useState('');
@@ -10,7 +13,9 @@ const VerseAnalyzer = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const analysisRef = useRef(null);
+  const { currentUser } = useAuth();
 
   // Auto-scroll to bottom when analysis or conversation history changes
   useEffect(() => {
@@ -45,6 +50,84 @@ const VerseAnalyzer = () => {
     checkServerHealth();
   }, []);
 
+  // Save conversation to Firestore
+  const saveConversationToFirestore = async (updatedHistory) => {
+    try {
+      if (!currentUser) {
+        console.log('User not logged in, cannot save conversation history');
+        return;
+      }
+
+      // Format messages for storing
+      const formattedMessages = updatedHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date().toISOString()
+      }));
+
+      // If this is a new conversation
+      if (!currentConversationId) {
+        // Create a title from the verse reference or the first part of the verse
+        const newTitle = verseInput.length > 50 
+          ? verseInput.substring(0, 47) + '...' 
+          : verseInput;
+        
+        // Create a new conversation document
+        const docRef = await addDoc(collection(db, 'mainBibleTools_verseAnalyzer'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          title: newTitle,
+          verse: verseInput,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          messages: formattedMessages
+        });
+        
+        setCurrentConversationId(docRef.id);
+        console.log('Created new verse analysis conversation with ID:', docRef.id);
+      } else {
+        // Get the existing conversation document
+        const conversationRef = doc(db, 'mainBibleTools_verseAnalyzer', currentConversationId);
+        const conversationSnap = await getDoc(conversationRef);
+        
+        if (conversationSnap.exists()) {
+          // Update the existing conversation with new messages
+          await updateDoc(conversationRef, {
+            messages: formattedMessages,
+            updatedAt: serverTimestamp()
+          });
+          
+          console.log('Updated verse analysis conversation:', currentConversationId);
+        } else {
+          console.error('Conversation document not found');
+          // If the conversation was deleted, create a new one
+          const docRef = await addDoc(collection(db, 'mainBibleTools_verseAnalyzer'), {
+            userId: currentUser.uid,
+            userEmail: currentUser.email,
+            title: verseInput.length > 50 ? verseInput.substring(0, 47) + '...' : verseInput,
+            verse: verseInput,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            messages: formattedMessages
+          });
+          
+          setCurrentConversationId(docRef.id);
+          console.log('Created replacement conversation with ID:', docRef.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving verse analysis to Firestore:', err);
+      // Don't show this error to user as it's not critical to functionality
+    }
+  };
+
+  // Reset conversation - use when analyzing a new verse
+  const resetConversation = () => {
+    setConversationHistory([]);
+    setAnalysis('');
+    setCurrentConversationId(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!verseInput.trim()) return;
@@ -61,7 +144,7 @@ const VerseAnalyzer = () => {
     setAnalysis('');
     
     // Clear any previous conversation when analyzing a new verse
-    setConversationHistory([]);
+    resetConversation();
 
     try {
       console.log(`Analyzing verse: ${verseInput}`);
@@ -88,10 +171,16 @@ const VerseAnalyzer = () => {
       setAnalysis(data.analysis);
       
       // Add the initial request to conversation history
-      setConversationHistory([
+      const newHistory = [
         { role: 'user', content: `Analyze this verse: ${verseInput}` },
         { role: 'assistant', content: data.analysis }
-      ]);
+      ];
+      setConversationHistory(newHistory);
+      
+      // Save to Firestore if user is logged in
+      if (currentUser) {
+        saveConversationToFirestore(newHistory);
+      }
     } catch (error) {
       console.error('Error analyzing verse:', error);
       setError(error.message || 'An unexpected error occurred');
@@ -155,19 +244,31 @@ const VerseAnalyzer = () => {
       console.log('Received follow-up response:', data);
       
       // Add the assistant's response to conversation history
-      setConversationHistory([
+      const finalHistory = [
         ...updatedHistory,
         { role: 'assistant', content: data.message }
-      ]);
+      ];
+      setConversationHistory(finalHistory);
+      
+      // Save updated conversation to Firestore
+      if (currentUser) {
+        saveConversationToFirestore(finalHistory);
+      }
     } catch (error) {
       console.error('Error getting follow-up response:', error);
       setError(error.message || 'An unexpected error occurred');
       
       // Add error message to conversation
-      setConversationHistory([
+      const finalHistory = [
         ...updatedHistory,
         { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }
-      ]);
+      ];
+      setConversationHistory(finalHistory);
+      
+      // Still save the conversation with the error message
+      if (currentUser) {
+        saveConversationToFirestore(finalHistory);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -194,6 +295,13 @@ const VerseAnalyzer = () => {
       {serverStatus === 'offline' && !error && (
         <div className="px-4 py-2 bg-red-100 border-l-4 border-red-500 text-red-700 text-sm">
           <span className="font-bold">Offline:</span> Server is not running
+        </div>
+      )}
+      
+      {/* User authentication notice */}
+      {!currentUser && (
+        <div className="px-4 py-2 bg-blue-100 border-l-4 border-blue-500 text-blue-700 text-sm">
+          <span className="font-bold">Note:</span> Analysis history will not be saved since you're not logged in
         </div>
       )}
       
