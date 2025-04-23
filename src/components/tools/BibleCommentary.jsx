@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../firebase/AuthContext';
 import { db } from '../../firebase/config';
-import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 
 const BibleCommentary = () => {
   const [book, setBook] = useState('Genesis');
@@ -65,6 +65,38 @@ const BibleCommentary = () => {
 
     checkServerHealth();
   }, []);
+
+  // Check if there's an existing commentary for this book/chapter in Firestore
+  const findExistingCommentary = async (book, chapter) => {
+    if (!currentUser) return null;
+    
+    try {
+      // Create a query against the collection
+      const q = query(
+        collection(db, 'mainBibleTools_bibleCommentary'), 
+        where('userId', '==', currentUser.uid),
+        where('book', '==', book),
+        where('chapter', '==', chapter)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        // Get the first matching document
+        const doc = querySnapshot.docs[0];
+        console.log('Found existing commentary for', book, chapter);
+        return {
+          id: doc.id,
+          ...doc.data()
+        };
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Error finding existing commentary:', err);
+      return null;
+    }
+  };
 
   // Save conversation to Firestore
   const saveConversationToFirestore = async (updatedHistory) => {
@@ -162,6 +194,32 @@ const BibleCommentary = () => {
     resetConversation();
 
     try {
+      // First check if we have an existing commentary for this book/chapter
+      if (currentUser) {
+        const existingCommentary = await findExistingCommentary(book, chapter);
+        
+        if (existingCommentary && existingCommentary.messages && existingCommentary.messages.length >= 2) {
+          console.log('Loading existing commentary from Firestore');
+          
+          // Set the conversation ID
+          setCurrentConversationId(existingCommentary.id);
+          
+          // Extract the commentary from the second message (assistant's response)
+          const commentaryContent = existingCommentary.messages[1].content;
+          setCommentary(commentaryContent);
+          
+          // Set the conversation history
+          setConversationHistory(existingCommentary.messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })));
+          
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // If no existing commentary is found, proceed with API request
       console.log(`Fetching commentary for ${book} ${chapter}...`);
       const response = await fetch('/api/tools/bible-commentary', {
         method: 'POST',
