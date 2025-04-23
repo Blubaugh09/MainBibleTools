@@ -117,18 +117,18 @@ app.post('/api/tools/generate-parallel-image', async (req, res) => {
     
     // Call OpenAI to generate the image
     const result = await openai.images.generate({
-      model: "gpt-image-1",
+      model: "dall-e-3",
       prompt: prompt,
-      response_format: "b64_json",
+      n: 1,
       size: "1024x1024",
       quality: "standard"
     });
     
-    // Send back the base64-encoded image
-    if (result.data && result.data[0] && result.data[0].b64_json) {
+    // Send back the image URL
+    if (result.data && result.data[0] && result.data[0].url) {
       console.log('Image generated successfully');
       res.json({
-        image: result.data[0].b64_json,
+        image: result.data[0].url,
         prompt: prompt
       });
     } else {
@@ -141,6 +141,41 @@ app.post('/api/tools/generate-parallel-image', async (req, res) => {
     });
   }
 });
+
+// Helper function to construct an image prompt from parallel data
+function constructImagePrompt(parallelData) {
+  // Get key elements from the parallel data
+  const { title, visualElements, oldTestament, newTestament } = parallelData;
+  
+  // Create a prompt that focuses on symbolic representation rather than literal religious imagery
+  // This helps avoid content policy restrictions while still creating meaningful visuals
+  let prompt = `Create a metaphorical, symbolic, and artistic illustration for Bible study materials titled "${title}". `;
+  
+  // Add visual description if available
+  if (visualElements && visualElements.visualDescription) {
+    prompt += `The image should show: ${visualElements.visualDescription} `;
+  }
+  
+  // Add symbolic elements
+  if (oldTestament && newTestament) {
+    prompt += `This illustrates the connection between ${oldTestament.name} from the Old Testament and ${newTestament.name} from the New Testament. `;
+  }
+  
+  // Add color theme
+  if (visualElements && visualElements.color) {
+    prompt += `Use a color palette based on ${visualElements.color}. `;
+  }
+  
+  // Add symbolic object
+  if (visualElements && visualElements.symbol) {
+    prompt += `Incorporate the symbol of ${visualElements.symbol} in a creative way. `;
+  }
+  
+  // Add style guidelines to ensure appropriate content
+  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
+  
+  return prompt;
+}
 
 // Visual Parallels Tool
 app.post('/api/tools/visual-parallels', async (req, res) => {
@@ -246,101 +281,6 @@ app.post('/api/tools/visual-parallels', async (req, res) => {
     res.status(500).json({ message: 'An error occurred while generating the visual parallel' });
   }
 });
-
-// Image Generation for Visual Parallels
-app.post('/api/tools/generate-parallel-image', async (req, res) => {
-  const { parallelData } = req.body;
-
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('API key not configured');
-    return res.status(500).json({ message: 'API key not configured on the server' });
-  }
-
-  if (!parallelData) {
-    return res.status(400).json({ message: 'Parallel data is required' });
-  }
-
-  try {
-    console.log(`Generating image for parallel: ${parallelData.title}`);
-    
-    // Construct a prompt that won't trigger content restrictions
-    const prompt = constructImagePrompt(parallelData);
-    
-    console.log('Using image prompt:', prompt);
-    
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-image-1",
-        prompt: prompt,
-        n: 1,
-        response_format: "b64_json",
-        size: "1024x1024",
-        quality: "standard"
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('OpenAI API Error:', errorData);
-      return res.status(response.status).json({ 
-        message: 'Error generating image',
-        error: errorData
-      });
-    }
-
-    const data = await response.json();
-    console.log('Image generation successful');
-    
-    // Send back the base64-encoded image
-    res.json({
-      image: data.data[0].b64_json,
-      prompt: prompt
-    });
-  } catch (error) {
-    console.error('Error in image generation endpoint:', error);
-    res.status(500).json({ message: 'An error occurred while generating the image' });
-  }
-});
-
-// Helper function to construct an image prompt from parallel data
-function constructImagePrompt(parallelData) {
-  // Get key elements from the parallel data
-  const { title, visualElements, oldTestament, newTestament } = parallelData;
-  
-  // Create a prompt that focuses on symbolic representation rather than literal religious imagery
-  // This helps avoid content policy restrictions while still creating meaningful visuals
-  let prompt = `Create a metaphorical, symbolic, and artistic illustration for Bible study materials titled "${title}". `;
-  
-  // Add visual description if available
-  if (visualElements && visualElements.visualDescription) {
-    prompt += `The image should show: ${visualElements.visualDescription} `;
-  }
-  
-  // Add symbolic elements
-  if (oldTestament && newTestament) {
-    prompt += `This illustrates the connection between ${oldTestament.name} from the Old Testament and ${newTestament.name} from the New Testament. `;
-  }
-  
-  // Add color theme
-  if (visualElements && visualElements.color) {
-    prompt += `Use a color palette based on ${visualElements.color}. `;
-  }
-  
-  // Add symbolic object
-  if (visualElements && visualElements.symbol) {
-    prompt += `Incorporate the symbol of ${visualElements.symbol} in a creative way. `;
-  }
-  
-  // Add style guidelines to ensure appropriate content
-  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
-  
-  return prompt;
-}
 
 // Bible Commentary Tool Endpoint
 app.post('/api/tools/bible-commentary', async (req, res) => {

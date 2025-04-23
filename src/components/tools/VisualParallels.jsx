@@ -12,6 +12,9 @@ const VisualParallels = () => {
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
   const [currentParallelId, setCurrentParallelId] = useState(null);
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState('');
   const resultsRef = useRef(null);
   const { currentUser } = useAuth();
 
@@ -82,7 +85,7 @@ const VisualParallels = () => {
   };
 
   // Save results to Firestore
-  const saveParallelToFirestore = async (data, query) => {
+  const saveParallelToFirestore = async (data, query, imageData = null) => {
     try {
       if (!currentUser) {
         console.log('User not logged in, cannot save parallel');
@@ -98,6 +101,7 @@ const VisualParallels = () => {
           query: query,
           title: data.title,
           parallelData: data,
+          generatedImage: imageData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -111,10 +115,17 @@ const VisualParallels = () => {
         
         if (parallelSnap.exists()) {
           // Update the existing document
-          await updateDoc(parallelRef, {
+          const updateData = {
             parallelData: data,
             updatedAt: serverTimestamp()
-          });
+          };
+          
+          // Only add image data if it exists
+          if (imageData) {
+            updateData.generatedImage = imageData;
+          }
+          
+          await updateDoc(parallelRef, updateData);
           
           console.log('Updated visual parallel:', currentParallelId);
         } else {
@@ -126,6 +137,7 @@ const VisualParallels = () => {
             query: query,
             title: data.title,
             parallelData: data,
+            generatedImage: imageData,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
@@ -140,10 +152,54 @@ const VisualParallels = () => {
     }
   };
 
+  // Generate an image for the parallel
+  const generateImage = async () => {
+    if (!parallelData) return;
+    
+    setIsGeneratingImage(true);
+    setError('');
+    
+    try {
+      const response = await fetch('/api/tools/generate-parallel-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          parallelData: parallelData
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate image');
+      }
+      
+      const data = await response.json();
+      console.log('Image generated successfully');
+      
+      setGeneratedImage(data.image);
+      setImagePrompt(data.prompt);
+      
+      // Update Firestore with the image
+      if (currentUser && currentParallelId) {
+        saveParallelToFirestore(parallelData, queryInput, data.image);
+      }
+      
+    } catch (error) {
+      console.error('Error generating image:', error);
+      setError(`Image generation failed: ${error.message}`);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
   // Reset current parallel
   const resetParallel = () => {
     setParallelData(null);
     setCurrentParallelId(null);
+    setGeneratedImage(null);
+    setImagePrompt('');
   };
 
   const handleSubmit = async (e) => {
@@ -160,6 +216,8 @@ const VisualParallels = () => {
     setError('');
     setIsLoading(true);
     setParallelData(null);
+    setGeneratedImage(null);
+    setImagePrompt('');
     
     // Reset current parallel
     resetParallel();
@@ -177,6 +235,11 @@ const VisualParallels = () => {
           
           // Set the parallel data
           setParallelData(existingParallel.parallelData);
+          
+          // Set the image if it exists
+          if (existingParallel.generatedImage) {
+            setGeneratedImage(existingParallel.generatedImage);
+          }
           
           setIsLoading(false);
           return;
@@ -322,6 +385,41 @@ const VisualParallels = () => {
           <div className="prose max-w-none">
             <h1 className="text-2xl font-bold text-center text-gray-800 mb-4">{parallelData.title}</h1>
             <p className="text-center text-gray-600 mb-8">{parallelData.summary}</p>
+            
+            {/* Image Generation Section */}
+            <div className="mb-8 text-center">
+              {generatedImage ? (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <h2 className="text-xl font-bold text-center text-gray-800 mb-4">Visual Representation</h2>
+                  <img 
+                    src={generatedImage} 
+                    alt={`Visual representation of ${parallelData.title}`}
+                    className="mx-auto max-w-full h-auto rounded-lg shadow-lg mb-4"
+                  />
+                  <div className="text-xs text-gray-500 italic mt-2">
+                    <p>Prompt: {imagePrompt}</p>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={generateImage}
+                  disabled={isGeneratingImage || !parallelData}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed mb-8"
+                >
+                  {isGeneratingImage ? (
+                    <span className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating Image...
+                    </span>
+                  ) : (
+                    'Generate Visual Representation'
+                  )}
+                </button>
+              )}
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
               {/* Old Testament Panel */}
