@@ -142,41 +142,6 @@ app.post('/api/tools/generate-parallel-image', async (req, res) => {
   }
 });
 
-// Helper function to construct an image prompt from parallel data
-function constructImagePrompt(parallelData) {
-  // Get key elements from the parallel data
-  const { title, visualElements, oldTestament, newTestament } = parallelData;
-  
-  // Create a prompt that focuses on symbolic representation rather than literal religious imagery
-  // This helps avoid content policy restrictions while still creating meaningful visuals
-  let prompt = `Create a metaphorical, symbolic, and artistic illustration for Bible study materials titled "${title}". `;
-  
-  // Add visual description if available
-  if (visualElements && visualElements.visualDescription) {
-    prompt += `The image should show: ${visualElements.visualDescription} `;
-  }
-  
-  // Add symbolic elements
-  if (oldTestament && newTestament) {
-    prompt += `This illustrates the connection between ${oldTestament.name} from the Old Testament and ${newTestament.name} from the New Testament. `;
-  }
-  
-  // Add color theme
-  if (visualElements && visualElements.color) {
-    prompt += `Use a color palette based on ${visualElements.color}. `;
-  }
-  
-  // Add symbolic object
-  if (visualElements && visualElements.symbol) {
-    prompt += `Incorporate the symbol of ${visualElements.symbol} in a creative way. `;
-  }
-  
-  // Add style guidelines to ensure appropriate content
-  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
-  
-  return prompt;
-}
-
 // Visual Parallels Tool
 app.post('/api/tools/visual-parallels', async (req, res) => {
   const { query } = req.body;
@@ -204,33 +169,37 @@ app.post('/api/tools/visual-parallels', async (req, res) => {
         messages: [
           {
             "role": "system",
-            "content": `You are a Biblical scholar specializing in typology and parallels between the Old and New Testament. 
-            Your task is to identify and explain parallels between the Old and New Testament based on the user's query.
+            "content": `You are a Biblical scholar specializing in typology, parallels, and comparisons throughout Scripture. 
+            Your task is to identify and explain meaningful parallels or comparisons between any Biblical elements based on the user's query.
+            These could be between Old and New Testament, within the same testament, between characters, events, symbols, or themes.
+            
             You should provide a structured response in the following JSON format:
             
             {
-              "title": "Title of the Parallel",
-              "summary": "Brief one-sentence summary of the parallel",
-              "oldTestament": {
-                "name": "Name of the Old Testament element",
+              "title": "Title of the Parallel or Comparison",
+              "summary": "Brief one-sentence summary of the parallel or comparison",
+              "elementA": {
+                "name": "Name of the first Biblical element",
                 "reference": "Scripture reference(s)",
-                "description": "Detailed description of the Old Testament element",
-                "significance": "Explanation of its significance in the Old Testament context",
+                "description": "Detailed description of this element",
+                "significance": "Explanation of its significance in context",
                 "keyVerses": ["Verse 1", "Verse 2"],
-                "keywords": ["Keyword1", "Keyword2"]
+                "keywords": ["Keyword1", "Keyword2"],
+                "testament": "Old or New (if applicable)"
               },
-              "newTestament": {
-                "name": "Name of the New Testament element",
+              "elementB": {
+                "name": "Name of the second Biblical element",
                 "reference": "Scripture reference(s)",
-                "description": "Detailed description of the New Testament element",
-                "significance": "Explanation of its significance in the New Testament context",
+                "description": "Detailed description of this element",
+                "significance": "Explanation of its significance in context",
                 "keyVerses": ["Verse 1", "Verse 2"],
-                "keywords": ["Keyword1", "Keyword2"]
+                "keywords": ["Keyword1", "Keyword2"],
+                "testament": "Old or New (if applicable)"
               },
               "connections": {
                 "symbolic": "Explanation of symbolic connections",
                 "thematic": "Explanation of thematic connections",
-                "prophetic": "Explanation of prophetic connections",
+                "prophetic": "Explanation of prophetic connections (if applicable)",
                 "theological": "Explanation of theological connections"
               },
               "visualElements": {
@@ -437,4 +406,44 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check available at http://localhost:${PORT}/api/health`);
   console.log(`OpenAI API key set: ${!!process.env.OPENAI_API_KEY}`);
-}); 
+});
+
+// Helper function to construct an image prompt from parallel data
+function constructImagePrompt(parallelData) {
+  // Get key elements from the parallel data
+  const { title, visualElements, elementA, elementB } = parallelData;
+  
+  // Create a prompt that focuses on symbolic representation rather than literal religious imagery
+  // This helps avoid content policy restrictions while still creating meaningful visuals
+  let prompt = `Create a metaphorical, symbolic, and artistic illustration for Bible study materials titled "${title}". `;
+  
+  // Add visual description if available
+  if (visualElements && visualElements.visualDescription) {
+    prompt += `The image should show: ${visualElements.visualDescription} `;
+  }
+  
+  // Add symbolic elements - more flexible for any Biblical comparison
+  if (elementA && elementB) {
+    prompt += `This illustrates the connection between ${elementA.name} and ${elementB.name}. `;
+    
+    // Add testament information if available
+    if (elementA.testament && elementB.testament && elementA.testament !== elementB.testament) {
+      prompt += `This compares elements from the ${elementA.testament} Testament and the ${elementB.testament} Testament. `;
+    }
+  }
+  
+  // Add color theme
+  if (visualElements && visualElements.color) {
+    prompt += `Use a color palette based on ${visualElements.color}. `;
+  }
+  
+  // Add symbolic object
+  if (visualElements && visualElements.symbol) {
+    prompt += `Incorporate the symbol of ${visualElements.symbol} in a creative way. `;
+  }
+  
+  // Add style guidelines to ensure appropriate content
+  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
+  
+  return prompt;
+} 

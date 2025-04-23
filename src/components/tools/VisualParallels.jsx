@@ -53,6 +53,32 @@ const VisualParallels = () => {
     checkServerHealth();
   }, []);
 
+  // Handle receiving data in the old format (oldTestament/newTestament)
+  useEffect(() => {
+    if (parallelData) {
+      // Check if data is in the old format and convert it to the new format
+      if (parallelData.oldTestament && parallelData.newTestament && !parallelData.elementA && !parallelData.elementB) {
+        console.log('Converting old parallel data format to new format');
+        
+        // Create a copy of the data with the new structure
+        const updatedData = {
+          ...parallelData,
+          elementA: {
+            ...parallelData.oldTestament,
+            testament: 'Old'
+          },
+          elementB: {
+            ...parallelData.newTestament,
+            testament: 'New'
+          }
+        };
+        
+        // Update the state with the converted data
+        setParallelData(updatedData);
+      }
+    }
+  }, [parallelData]);
+
   // Find existing parallels in Firestore
   const findExistingParallel = async (query) => {
     if (!currentUser) return null;
@@ -422,72 +448,96 @@ const VisualParallels = () => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-              {/* Old Testament Panel */}
-              <div className="bg-amber-50 rounded-lg p-6 border border-amber-200">
-                <h2 className="text-xl font-bold text-amber-800 mb-2">Old Testament</h2>
-                <h3 className="text-lg font-semibold mb-2">{parallelData.oldTestament.name}</h3>
-                <p className="text-sm text-amber-800 mb-4">{parallelData.oldTestament.reference}</p>
+              {/* Element A Panel */}
+              <div className={`rounded-lg p-6 border ${parallelData.elementA.testament === "Old" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                <h2 className={`text-xl font-bold mb-2 ${parallelData.elementA.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
+                  {parallelData.elementA.testament ? `${parallelData.elementA.testament} Testament` : 'Biblical Element A'}
+                </h2>
+                <h3 className="text-lg font-semibold mb-2">{parallelData.elementA.name}</h3>
+                <p className={`text-sm mb-4 ${parallelData.elementA.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
+                  {parallelData.elementA.reference}
+                </p>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-amber-700">Description</h4>
+                  <h4 className={`font-semibold ${parallelData.elementA.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Description
+                  </h4>
                   <div className="text-gray-700">
-                    {renderMarkdown(parallelData.oldTestament.description)}
+                    {renderMarkdown(parallelData.elementA.description)}
                   </div>
                 </div>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-amber-700">Significance</h4>
+                  <h4 className={`font-semibold ${parallelData.elementA.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Significance
+                  </h4>
                   <div className="text-gray-700">
-                    {renderMarkdown(parallelData.oldTestament.significance)}
+                    {renderMarkdown(parallelData.elementA.significance)}
                   </div>
                 </div>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-amber-700">Key Verses</h4>
+                  <h4 className={`font-semibold ${parallelData.elementA.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Key Verses
+                  </h4>
                   <ul className="list-disc pl-5 text-gray-700">
-                    {renderKeyVerses(parallelData.oldTestament.keyVerses)}
+                    {renderKeyVerses(parallelData.elementA.keyVerses)}
                   </ul>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-amber-700 mb-2">Keywords</h4>
+                  <h4 className={`font-semibold mb-2 ${parallelData.elementA.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Keywords
+                  </h4>
                   <div className="flex flex-wrap">
-                    {renderKeywords(parallelData.oldTestament.keywords)}
+                    {renderKeywords(parallelData.elementA.keywords)}
                   </div>
                 </div>
               </div>
               
-              {/* New Testament Panel */}
-              <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-                <h2 className="text-xl font-bold text-blue-800 mb-2">New Testament</h2>
-                <h3 className="text-lg font-semibold mb-2">{parallelData.newTestament.name}</h3>
-                <p className="text-sm text-blue-800 mb-4">{parallelData.newTestament.reference}</p>
+              {/* Element B Panel */}
+              <div className={`rounded-lg p-6 border ${parallelData.elementB.testament === "Old" ? "bg-amber-50 border-amber-200" : "bg-blue-50 border-blue-200"}`}>
+                <h2 className={`text-xl font-bold mb-2 ${parallelData.elementB.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
+                  {parallelData.elementB.testament ? `${parallelData.elementB.testament} Testament` : 'Biblical Element B'}
+                </h2>
+                <h3 className="text-lg font-semibold mb-2">{parallelData.elementB.name}</h3>
+                <p className={`text-sm mb-4 ${parallelData.elementB.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
+                  {parallelData.elementB.reference}
+                </p>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-blue-700">Description</h4>
+                  <h4 className={`font-semibold ${parallelData.elementB.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Description
+                  </h4>
                   <div className="text-gray-700">
-                    {renderMarkdown(parallelData.newTestament.description)}
+                    {renderMarkdown(parallelData.elementB.description)}
                   </div>
                 </div>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-blue-700">Significance</h4>
+                  <h4 className={`font-semibold ${parallelData.elementB.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Significance
+                  </h4>
                   <div className="text-gray-700">
-                    {renderMarkdown(parallelData.newTestament.significance)}
+                    {renderMarkdown(parallelData.elementB.significance)}
                   </div>
                 </div>
                 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-blue-700">Key Verses</h4>
+                  <h4 className={`font-semibold ${parallelData.elementB.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Key Verses
+                  </h4>
                   <ul className="list-disc pl-5 text-gray-700">
-                    {renderKeyVerses(parallelData.newTestament.keyVerses)}
+                    {renderKeyVerses(parallelData.elementB.keyVerses)}
                   </ul>
                 </div>
                 
                 <div>
-                  <h4 className="font-semibold text-blue-700 mb-2">Keywords</h4>
+                  <h4 className={`font-semibold mb-2 ${parallelData.elementB.testament === "Old" ? "text-amber-700" : "text-blue-700"}`}>
+                    Keywords
+                  </h4>
                   <div className="flex flex-wrap">
-                    {renderKeywords(parallelData.newTestament.keywords)}
+                    {renderKeywords(parallelData.elementB.keywords)}
                   </div>
                 </div>
               </div>
