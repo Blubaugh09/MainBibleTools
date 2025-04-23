@@ -142,7 +142,6 @@ const AdvancedChat = () => {
                     <div className="markdown-content">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
-                        className={msg.role === 'user' ? 'text-white' : 'text-gray-800'}
                         components={{
                           h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
                           h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
