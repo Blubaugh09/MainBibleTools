@@ -1,40 +1,44 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const Chat = () => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
-  // Check server status when component mounts
+  // Check server health on component mount
   useEffect(() => {
     const checkServerHealth = async () => {
       try {
         const response = await fetch('/api/health');
-        if (response.ok) {
-          const data = await response.json();
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
           setServerStatus('online');
           
-          if (!data.apiKeySet) {
-            setError('OpenAI API key is not configured. Please set OPENAI_API_KEY in your .env file');
+          // Check if API key is configured
+          if (!data.apiKeyConfigured) {
+            setError('OpenAI API key is not configured. The chat will not work.');
           }
         } else {
           setServerStatus('offline');
-          setError('Cannot connect to the chat server');
+          setError('Server is experiencing issues. Please try again later.');
         }
       } catch (err) {
-        console.error('Server health check failed:', err);
+        console.error('Error checking server health:', err);
         setServerStatus('offline');
-        setError('Cannot connect to the chat server. Make sure to run "npm run server"');
+        setError('Cannot connect to server. Please ensure the server is running.');
       }
     };
 
@@ -46,11 +50,14 @@ const Chat = () => {
     
     if (!input.trim() || serverStatus !== 'online') return;
     
-    const userMessage = { role: 'user', content: input };
-    setMessages(prevMessages => [...prevMessages, userMessage]);
+    const userMessage = input;
     setInput('');
-    setIsLoading(true);
-    setError('');
+    
+    // Add user message to chat
+    setMessages(prevMessages => [...prevMessages, { type: 'user', text: userMessage }]);
+    
+    // Set loading state
+    setLoading(true);
     
     try {
       const response = await fetch('/api/chat', {
@@ -58,104 +65,91 @@ const Chat = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          messages: [...messages, userMessage]
-        }),
+        body: JSON.stringify({ message: userMessage, history: messages.map(m => ({
+          role: m.type === 'user' ? 'user' : 'assistant',
+          content: m.text
+        })) }),
       });
       
       if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      setMessages(prevMessages => [
-        ...prevMessages, 
-        { role: 'assistant', content: data.message }
-      ]);
+      
+      // Add assistant response to chat
+      setMessages(prevMessages => [...prevMessages, { type: 'assistant', text: data.message }]);
+      
     } catch (err) {
       console.error('Error sending message:', err);
-      setError('Failed to send message. Please try again.');
+      setMessages(prevMessages => [...prevMessages, { type: 'error', text: 'Error: Failed to get response. Please try again.' }]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-      {/* Error display */}
-      {error && (
-        <div className="bg-red-600 text-white p-2 text-center">
-          {error}
-        </div>
-      )}
-      
-      {/* Server status indicator */}
-      <div className={`p-2 text-center text-white text-sm ${
-        serverStatus === 'online' ? 'bg-green-600' : 
-        serverStatus === 'offline' ? 'bg-red-600' : 'bg-yellow-600'
-      }`}>
-        Server: {serverStatus}
+    <div className="chat-container bg-white rounded-lg shadow-md p-4 w-full max-w-3xl mx-auto overflow-hidden flex flex-col h-full" style={{ minHeight: '450px' }}>
+      {/* Server status */}
+      <div className="mb-4">
+        {serverStatus === 'checking' && <p className="text-yellow-500">Checking server status...</p>}
+        {serverStatus === 'offline' && <p className="text-red-500">Server is offline. Chat functionality is unavailable.</p>}
+        {error && <p className="text-red-500">{error}</p>}
       </div>
-      
+
       {/* Chat messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-700">
+      <div className="flex-grow overflow-y-auto p-2 mb-4">
         {messages.map((message, index) => (
-          <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-3/4 rounded-lg p-3 ${
-              message.role === 'user' 
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-white'
-            }`}>
-              {message.role === 'assistant' ? (
-                <div className="markdown-content">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    className="prose prose-invert max-w-none"
-                  >
-                    {message.content}
+          <div key={index} className={`mb-4 ${message.type === 'user' ? 'text-right' : 'text-left'}`}>
+            <div className={`inline-block max-w-md p-3 rounded-lg ${message.type === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>
+              {message.type === 'user' ? (
+                <p>{message.text}</p>
+              ) : message.type === 'assistant' ? (
+                <div className="bg-gray-200 p-3 rounded-lg">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} className="markdown-content">
+                    {message.text}
                   </ReactMarkdown>
                 </div>
               ) : (
-                message.content
+                <p className="text-red-500">{message.text}</p>
               )}
             </div>
           </div>
         ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-800 text-white rounded-lg p-3">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-100"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-200"></div>
+        {loading && (
+          <div className="text-left mb-4">
+            <div className="inline-block max-w-md p-3 rounded-lg bg-gray-200">
+              <div className="flex items-center">
+                <div className="loader mr-2"></div>
+                <p>Thinking...</p>
               </div>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
-      
-      {/* Input area */}
-      <form 
-        onSubmit={handleSubmit} 
-        className="p-4 bg-gray-900 border-t border-gray-600"
-      >
-        <div className="flex space-x-2">
+
+      {/* Input form */}
+      <form onSubmit={handleSubmit} className="mt-auto">
+        <div className="flex">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question..."
-            disabled={isLoading || serverStatus !== 'online'}
-            className="flex-1 bg-gray-800 text-white placeholder-gray-400 p-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+            placeholder="Ask anything..."
+            disabled={serverStatus !== 'online' || loading}
+            className="flex-grow p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim() || serverStatus !== 'online'}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded focus:outline-none disabled:bg-gray-500 disabled:cursor-not-allowed"
+            disabled={serverStatus !== 'online' || loading}
+            className="bg-blue-500 text-white p-2 rounded-r-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400"
           >
-            {isLoading ? (
-              <div className="w-6 h-6 border-t-2 border-blue-200 border-solid rounded-full animate-spin"></div>
+            {loading ? (
+              <span className="flex items-center">
+                <span className="loader mr-1"></span>
+                <span>...</span>
+              </span>
             ) : (
               'Send'
             )}
