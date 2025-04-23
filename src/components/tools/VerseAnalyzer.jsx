@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../firebase/AuthContext';
 import { db } from '../../firebase/config';
-import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 
 const VerseAnalyzer = () => {
   const [verseInput, setVerseInput] = useState('');
@@ -128,6 +128,37 @@ const VerseAnalyzer = () => {
     setCurrentConversationId(null);
   };
 
+  // Check if there's an existing analysis for this verse in Firestore
+  const findExistingAnalysis = async (verse) => {
+    if (!currentUser) return null;
+    
+    try {
+      // Create a query against the collection
+      const q = query(
+        collection(db, 'mainBibleTools_verseAnalyzer'), 
+        where('userId', '==', currentUser.uid),
+        where('verse', '==', verse)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        // Get the first matching document
+        const doc = querySnapshot.docs[0];
+        console.log('Found existing analysis for verse:', verse);
+        return {
+          id: doc.id,
+          ...doc.data()
+        };
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('Error finding existing analysis:', err);
+      return null;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!verseInput.trim()) return;
@@ -147,6 +178,32 @@ const VerseAnalyzer = () => {
     resetConversation();
 
     try {
+      // First check if we have an existing analysis for this verse
+      if (currentUser) {
+        const existingAnalysis = await findExistingAnalysis(verseInput);
+        
+        if (existingAnalysis && existingAnalysis.messages && existingAnalysis.messages.length >= 2) {
+          console.log('Loading existing analysis from Firestore');
+          
+          // Set the conversation ID
+          setCurrentConversationId(existingAnalysis.id);
+          
+          // Extract the analysis from the second message (assistant's response)
+          const analysisContent = existingAnalysis.messages[1].content;
+          setAnalysis(analysisContent);
+          
+          // Set the conversation history
+          setConversationHistory(existingAnalysis.messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })));
+          
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // If no existing analysis is found, proceed with API request
       console.log(`Analyzing verse: ${verseInput}`);
       const response = await fetch('/api/tools/verse-analyzer', {
         method: 'POST',
