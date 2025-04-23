@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -139,7 +139,7 @@ const AdvancedChat = () => {
                     : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}
                 >
                   {msg.role === 'assistant' ? (
-                    <div className="markdown-content">
+                    <div className="bg-blue-100 p-3 rounded-lg mb-2">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
                         components={{
