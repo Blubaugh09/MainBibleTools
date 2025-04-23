@@ -6,6 +6,7 @@ import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import UnifiedToolView from './pages/UnifiedToolView';
 import BibleCommentaryView from './pages/tools/BibleCommentaryView';
 import VerseAnalyzerView from './pages/tools/VerseAnalyzerView';
 import AdvancedChatView from './pages/tools/AdvancedChatView';
@@ -23,6 +24,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <Dashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools" 
+            element={
+              <PrivateRoute>
+                <UnifiedToolView />
               </PrivateRoute>
             } 
           />

@@ -26,7 +26,7 @@ const Dashboard = () => {
       description: 'Get deeper insights with our more advanced AI model using GPT-4o-mini',
       icon: '✨',
       color: 'indigo',
-      path: '/tools/advanced-chat'
+      path: '/tools'
     },
     {
       id: 'bible-commentary',
@@ -34,7 +34,7 @@ const Dashboard = () => {
       description: 'Get in-depth commentary on any chapter of the Bible',
       icon: '📖',
       color: 'blue',
-      path: '/tools/bible-commentary'
+      path: '/tools'
     },
     {
       id: 'verse-analyzer',
@@ -42,7 +42,7 @@ const Dashboard = () => {
       description: 'Analyze any Bible verse to discover deeper meaning and context',
       icon: '🔍',
       color: 'purple',
-      path: '/tools/verse-analyzer'
+      path: '/tools'
     }
   ];
 
