@@ -6,6 +6,7 @@ import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import VisualParallelsView from './pages/tools/VisualParallelsView';
 
 const App = () => {
   return (
@@ -20,6 +21,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <Dashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/visual-parallels" 
+            element={
+              <PrivateRoute>
+                <VisualParallelsView />
               </PrivateRoute>
             } 
           />

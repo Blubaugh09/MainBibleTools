@@ -97,6 +97,96 @@ app.post('/api/chat/advanced', async (req, res) => {
   }
 });
 
+// Visual Parallels Tool Endpoint
+app.post('/api/tools/visual-parallels', async (req, res) => {
+  try {
+    console.log('Visual Parallels request received');
+    const { query } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    console.log(`Generating visual parallels for query: ${query}`);
+    
+    const systemPrompt = `You are a Bible scholar specializing in comparing Old and New Testament themes, symbols, and concepts.
+    
+    Analyze the user's query, which may be about biblical parallels, typology, or thematic connections. Even if they don't explicitly mention Old and New Testament elements, identify the most relevant comparison to make.
+    
+    Your task is to provide a structured JSON response that will be used to create a visual side-by-side comparison.
+    
+    The response must be valid JSON with the following structure and MUST follow this EXACT format:
+    {
+      "title": "A concise title describing the parallel",
+      "summary": "A brief explanation of the connection between the Old and New Testament elements",
+      "oldTestament": {
+        "name": "Name of the Old Testament element (person, event, symbol, etc.)",
+        "reference": "Primary biblical reference (e.g., 'Genesis 22:1-18')",
+        "description": "Detailed description of the Old Testament element",
+        "significance": "Theological/historical significance within the Old Testament context",
+        "keyVerses": ["Verse 1", "Verse 2", "Verse 3"],
+        "keywords": ["keyword1", "keyword2", "keyword3"]
+      },
+      "newTestament": {
+        "name": "Name of the New Testament element (person, event, symbol, etc.)",
+        "reference": "Primary biblical reference (e.g., 'John 3:16')",
+        "description": "Detailed description of the New Testament element",
+        "significance": "Theological significance and fulfillment aspects",
+        "keyVerses": ["Verse 1", "Verse 2", "Verse 3"],
+        "keywords": ["keyword1", "keyword2", "keyword3"]
+      },
+      "connections": {
+        "symbolic": "Explanation of symbolic parallels",
+        "thematic": "Explanation of thematic parallels",
+        "prophetic": "Explanation of prophetic fulfillment (if applicable)",
+        "theological": "Shared theological principles"
+      },
+      "visualElements": {
+        "color": "A suggested color theme (e.g., 'blue-red', 'purple-gold')",
+        "symbol": "A suggested symbol representing this parallel (e.g., 'lamb', 'temple', 'crown')",
+        "visualDescription": "Brief description of how to visually represent this parallel"
+      }
+    }
+
+    Ensure your JSON is properly formatted and valid. Focus on making accurate, theologically sound connections.`;
+    
+    const userPrompt = `Please analyze this request and provide a visual parallel between Old and New Testament elements: "${query}"`;
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 1500,
+      temperature: 0.7,
+      response_format: { type: "json_object" }
+    });
+    
+    console.log('Response received from OpenAI for Visual Parallels');
+    
+    // Parse the response to ensure it's valid JSON
+    let parallelData;
+    try {
+      parallelData = JSON.parse(response.choices[0].message.content);
+    } catch (parseError) {
+      console.error('Error parsing JSON response:', parseError);
+      // If parsing fails, return the raw text
+      return res.status(500).json({
+        message: "Failed to generate proper JSON format. Please try a different query."
+      });
+    }
+    
+    res.json(parallelData);
+    
+  } catch (error) {
+    console.error('Visual Parallels error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Bible Commentary Tool Endpoint
 app.post('/api/tools/bible-commentary', async (req, res) => {
   try {

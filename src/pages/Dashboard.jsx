@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../firebase/AuthContext';
 import BibleCommentary from '../components/tools/BibleCommentary';
 import VerseAnalyzer from '../components/tools/VerseAnalyzer';
+import VisualParallels from '../components/tools/VisualParallels';
 import AdvancedChat from '../components/AdvancedChat';
 
 const Dashboard = () => {
@@ -44,6 +45,13 @@ const Dashboard = () => {
       description: 'Analyze any Bible verse to discover deeper meaning and context',
       icon: '🔍',
       color: 'purple'
+    },
+    {
+      id: 'visual-parallels',
+      name: 'Visual Parallels',
+      description: 'Explore connections between Old and New Testament themes and symbols',
+      icon: '🔄',
+      color: 'teal'
     }
   ];
 
@@ -57,6 +65,8 @@ const Dashboard = () => {
         return <BibleCommentary />;
       case 'verse-analyzer':
         return <VerseAnalyzer />;
+      case 'visual-parallels':
+        return <VisualParallels />;
       case 'chat':
       default:
         return <AdvancedChat />;
@@ -112,6 +122,10 @@ const Dashboard = () => {
                   bgClass = "bg-purple-50";
                   textClass = "text-purple-700";
                   activeClass = "bg-purple-100 border-purple-300";
+                } else if (tool.color === 'teal') {
+                  bgClass = "bg-teal-50";
+                  textClass = "text-teal-700";
+                  activeClass = "bg-teal-100 border-teal-300";
                 }
                 
                 return (
