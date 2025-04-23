@@ -1,9 +1,9 @@
 import { useState } from 'react';
 
-// Tool view components
-import BibleCommentaryView from '../views/BibleCommentaryView';
-import VerseAnalyzerView from '../views/VerseAnalyzerView';
-import AdvancedChatView from '../views/AdvancedChatView';
+// Tool components
+import BibleCommentary from './tools/BibleCommentary';
+import VerseAnalyzer from './tools/VerseAnalyzer';
+import AdvancedChat from './AdvancedChat';
 
 const ToolSelector = () => {
   const [selectedTool, setSelectedTool] = useState('chat');
@@ -19,12 +19,12 @@ const ToolSelector = () => {
   const renderSelectedTool = () => {
     switch (selectedTool) {
       case 'commentary':
-        return <BibleCommentaryView />;
+        return <BibleCommentary />;
       case 'verse-analyzer':
-        return <VerseAnalyzerView />;
+        return <VerseAnalyzer />;
       case 'chat':
       default:
-        return <AdvancedChatView />;
+        return <AdvancedChat />;
     }
   };
 
@@ -57,7 +57,7 @@ const ToolSelector = () => {
       </div>
 
       {/* Tool content area */}
-      <div>
+      <div className="bg-white rounded-lg shadow">
         {renderSelectedTool()}
       </div>
     </div>

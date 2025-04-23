@@ -1,18 +1,14 @@
-import { useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const BibleCommentary = ({
-  currentBook = 'Genesis',
-  currentChapter = '1',
-  commentaryData = null,
-  isLoading = false,
-  error = '',
-  serverStatus = 'checking',
-  onBookChange,
-  onChapterChange,
-  onSubmit
-}) => {
+const BibleCommentary = () => {
+  const [book, setBook] = useState('Genesis');
+  const [chapter, setChapter] = useState('1');
+  const [commentary, setCommentary] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [serverStatus, setServerStatus] = useState('checking');
   const commentaryRef = useRef(null);
 
   // Bible books array for dropdown
@@ -30,9 +26,78 @@ const BibleCommentary = ({
     "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
   ];
 
+  // Check if the server is running when the component mounts
+  useEffect(() => {
+    const checkServerHealth = async () => {
+      try {
+        setServerStatus('checking');
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Server health check for Bible Commentary:', data);
+          setServerStatus('online');
+          
+          if (!data.env.apiKeySet) {
+            setError('OpenAI API key is not configured on the server');
+          }
+        } else {
+          setServerStatus('offline');
+          setError('Cannot connect to the chat server');
+        }
+      } catch (err) {
+        console.error('Server health check failed:', err);
+        setServerStatus('offline');
+        setError('Cannot connect to the chat server. Make sure to run "npm run server"');
+      }
+    };
+
+    checkServerHealth();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await onSubmit(currentBook, currentChapter);
+    
+    // Don't try to send if server is offline
+    if (serverStatus !== 'online') {
+      setError('Cannot fetch commentary: server is offline');
+      return;
+    }
+
+    // Reset any previous errors
+    setError('');
+    setIsLoading(true);
+    setCommentary('');
+
+    try {
+      console.log(`Fetching commentary for ${book} ${chapter}...`);
+      const response = await fetch('/api/tools/bible-commentary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          book,
+          chapter
+        }),
+      });
+
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error response:', errorData);
+        throw new Error(errorData.message || 'Failed to get commentary');
+      }
+
+      const data = await response.json();
+      console.log('Received commentary:', data);
+      setCommentary(data.commentary);
+    } catch (error) {
+      console.error('Error fetching commentary:', error);
+      setError(error.message || 'An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Generate an array of chapter numbers based on the selected book
@@ -57,29 +122,7 @@ const BibleCommentary = ({
     return Array.from({ length: chapterCounts[book] || 1 }, (_, i) => (i + 1).toString());
   };
 
-  const chapters = getChapterCount(currentBook);
-
-  // Render table of contents if available
-  const renderTableOfContents = () => {
-    if (!commentaryData || !commentaryData.sections || commentaryData.sections.length === 0) {
-      return null;
-    }
-
-    return (
-      <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
-        <h3 className="text-lg font-medium text-gray-700 mb-2">Contents</h3>
-        <ul className="list-disc pl-5 space-y-1">
-          {commentaryData.sections.map((section, index) => (
-            <li key={index} className={section.level === 3 ? "ml-4" : ""}>
-              <span className="text-indigo-600 hover:underline cursor-pointer">
-                {section.title}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
+  const chapters = getChapterCount(book);
 
   return (
     <div className="w-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
@@ -109,10 +152,10 @@ const BibleCommentary = ({
             <label htmlFor="book-select" className="block text-sm font-medium text-gray-700 mb-1">Book</label>
             <select
               id="book-select"
-              value={currentBook}
+              value={book}
               onChange={(e) => {
-                onBookChange(e.target.value);
-                onChapterChange('1'); // Reset chapter when book changes
+                setBook(e.target.value);
+                setChapter('1'); // Reset chapter when book changes
               }}
               className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               disabled={isLoading}
@@ -129,8 +172,8 @@ const BibleCommentary = ({
             <label htmlFor="chapter-select" className="block text-sm font-medium text-gray-700 mb-1">Chapter</label>
             <select
               id="chapter-select"
-              value={currentChapter}
-              onChange={(e) => onChapterChange(e.target.value)}
+              value={chapter}
+              onChange={(e) => setChapter(e.target.value)}
               className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               disabled={isLoading}
             >
@@ -158,12 +201,9 @@ const BibleCommentary = ({
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-700"></div>
           </div>
-        ) : commentaryData ? (
+        ) : commentary ? (
           <div className="prose max-w-none">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">{commentaryData.book} {commentaryData.chapter}</h2>
-            
-            {renderTableOfContents()}
-            
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">{book} {chapter}</h2>
             <div className="markdown-content">
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm]}
@@ -183,7 +223,7 @@ const BibleCommentary = ({
                       : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>
                 }}
               >
-                {commentaryData.content}
+                {commentary}
               </ReactMarkdown>
             </div>
           </div>

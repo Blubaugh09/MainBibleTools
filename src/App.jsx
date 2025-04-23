@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './firebase/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
@@ -5,8 +6,11 @@ import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import BibleCommentaryView from './pages/tools/BibleCommentaryView';
+import VerseAnalyzerView from './pages/tools/VerseAnalyzerView';
+import AdvancedChatView from './pages/tools/AdvancedChatView';
 
-function App() {
+const App = () => {
   return (
     <Router>
       <AuthProvider>
@@ -22,10 +26,34 @@ function App() {
               </PrivateRoute>
             } 
           />
+          <Route 
+            path="/tools/bible-commentary" 
+            element={
+              <PrivateRoute>
+                <BibleCommentaryView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/verse-analyzer" 
+            element={
+              <PrivateRoute>
+                <VerseAnalyzerView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/advanced-chat" 
+            element={
+              <PrivateRoute>
+                <AdvancedChatView />
+              </PrivateRoute>
+            } 
+          />
         </Routes>
       </AuthProvider>
     </Router>
   );
-}
+};
 
 export default App;
