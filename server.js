@@ -1,117 +1,207 @@
-const dotenv = require('dotenv');
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
+const { OpenAI } = require('openai');
+require('dotenv').config();
 
-dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Enable CORS for development
 app.use(cors());
+
+// Parse JSON requests
 app.use(express.json());
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist')));
+}
+
+// Initialize OpenAI with API key from environment variables
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  console.log('Health check endpoint called');
-  return res.status(200).json({ 
-    status: 'ok', 
-    message: 'Server is running',
+  res.json({
+    status: 'ok',
     env: {
-      apiKeySet: !!process.env.VITE_OPENAI_API_KEY
+      apiKeySet: !!process.env.OPENAI_API_KEY
     }
   });
 });
 
-// OpenAI Chat API endpoint - gpt-3.5-turbo for public access
+// Regular Chat Endpoint (GPT-3.5)
 app.post('/api/chat', async (req, res) => {
   try {
+    console.log('Regular chat request received');
     const { messages } = req.body;
-
-    // Get API key from environment variable (server-side only)
-    const apiKey = process.env.VITE_OPENAI_API_KEY;
     
-    if (!apiKey) {
-      console.error('API key is not configured');
-      return res.status(500).json({ message: 'API key not configured' });
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
     }
     
-    console.log('Processing chat request with messages:', messages.length);
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: messages,
-        max_tokens: 500
-      })
+    console.log(`Processing ${messages.length} messages`);
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: messages,
+      max_tokens: 500,
+      temperature: 0.7,
     });
-
-    const data = await response.json();
     
-    if (!response.ok) {
-      console.error('OpenAI API error:', data.error);
-      throw new Error(data.error?.message || 'Error from OpenAI API');
-    }
-
-    console.log('Received response from OpenAI');
-    return res.status(200).json({ message: data.choices[0].message.content });
+    console.log('Response received from OpenAI');
+    
+    res.json({
+      message: response.choices[0].message.content
+    });
   } catch (error) {
-    console.error('Error calling OpenAI:', error);
-    return res.status(500).json({ message: 'Failed to communicate with AI service' });
+    console.error('Chat error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
   }
 });
 
-// OpenAI Chat API endpoint - 4o-mini model for authenticated users
+// Advanced Chat Endpoint (GPT-4o-mini)
 app.post('/api/chat/advanced', async (req, res) => {
   try {
+    console.log('Advanced chat request received');
     const { messages } = req.body;
-
-    // Get API key from environment variable (server-side only)
-    const apiKey = process.env.VITE_OPENAI_API_KEY;
     
-    if (!apiKey) {
-      console.error('API key is not configured');
-      return res.status(500).json({ message: 'API key not configured' });
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
     }
     
-    console.log('Processing advanced chat request with messages:', messages.length);
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: messages,
-        max_tokens: 800,
-        temperature: 0.7
-      })
+    console.log(`Processing ${messages.length} messages`);
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 800,
+      temperature: 0.7,
     });
-
-    const data = await response.json();
     
-    if (!response.ok) {
-      console.error('OpenAI API error:', data.error);
-      throw new Error(data.error?.message || 'Error from OpenAI API');
-    }
-
-    console.log('Received advanced response from OpenAI');
-    return res.status(200).json({ message: data.choices[0].message.content });
+    console.log('Response received from OpenAI for advanced chat');
+    
+    res.json({
+      message: response.choices[0].message.content
+    });
   } catch (error) {
-    console.error('Error calling OpenAI advanced API:', error);
-    return res.status(500).json({ message: 'Failed to communicate with advanced AI service' });
+    console.error('Advanced chat error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
   }
 });
 
-// Start the server
+// Bible Commentary Tool Endpoint
+app.post('/api/tools/bible-commentary', async (req, res) => {
+  try {
+    console.log('Bible Commentary request received');
+    const { book, chapter } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    console.log(`Generating commentary for ${book} ${chapter}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible scholar and theological expert. Provide an in-depth commentary on Bible chapters with historical context, 
+        theological analysis, and practical applications. Use markdown formatting for clear section headers. Include information about key 
+        figures, themes, connections to other chapters, and historical background where relevant. Your commentary should be educational, 
+        respectful of diverse interpretations, and spiritually insightful.`
+      },
+      {
+        role: 'user',
+        content: `Please provide a detailed commentary on ${book} chapter ${chapter}. Include historical context, key verses, themes, 
+        and interpretations. Make sure to structure your response with clear sections using markdown.`
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 1200,
+      temperature: 0.6,
+    });
+    
+    console.log('Response received from OpenAI for Bible Commentary');
+    
+    res.json({
+      commentary: response.choices[0].message.content
+    });
+  } catch (error) {
+    console.error('Bible Commentary error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
+// Verse Analyzer Tool Endpoint
+app.post('/api/tools/verse-analyzer', async (req, res) => {
+  try {
+    console.log('Verse Analyzer request received');
+    const { verse } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    console.log(`Analyzing verse: ${verse}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible scholar specializing in detailed verse analysis. Provide comprehensive analysis of Bible verses 
+        with linguistic insights, cultural context, theological meaning, and practical applications. Structure your response with 
+        clear sections using markdown formatting. Your analysis should be educational, insightful, and respectful of various 
+        interpretations. If given a reference without the verse text, try to recall the verse content first, then analyze it.`
+      },
+      {
+        role: 'user',
+        content: `Please analyze this Bible verse or reference: "${verse}". If this is just a reference without the full verse, 
+        please include the verse text first. Then provide detailed analysis including: original language insights if relevant, 
+        historical/cultural context, theological significance, connections to other passages, and practical applications. 
+        Structure your response with clear markdown formatting.`
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 1000,
+      temperature: 0.6,
+    });
+    
+    console.log('Response received from OpenAI for Verse Analyzer');
+    
+    res.json({
+      analysis: response.choices[0].message.content
+    });
+  } catch (error) {
+    console.error('Verse Analyzer error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
+// Handle SPA routing in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check available at http://localhost:${PORT}/api/health`);
-  console.log(`OpenAI API key set: ${!!process.env.VITE_OPENAI_API_KEY}`);
+  console.log(`OpenAI API key set: ${!!process.env.OPENAI_API_KEY}`);
 }); 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../firebase/AuthContext';
-import AdvancedChat from '../components/AdvancedChat';
+import ToolSelector from '../components/ToolSelector';
 
 const Dashboard = () => {
   const [error, setError] = useState('');
@@ -65,11 +65,11 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Right Column - Advanced Chat */}
+          {/* Right Column - Tool Selector & Tools */}
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Bible Advisor (GPT-4o-mini)</h2>
-            <p className="text-gray-600 mb-4">Get deeper insights with our more advanced AI model, available only to logged-in users.</p>
-            <AdvancedChat />
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Bible Study AI Tools</h2>
+            <p className="text-gray-600 mb-4">Select from different AI-powered tools to enhance your Bible study experience.</p>
+            <ToolSelector />
           </div>
         </div>
       </main>
