@@ -147,48 +147,96 @@ app.post('/api/tools/bible-commentary', async (req, res) => {
 // Verse Analyzer Tool Endpoint
 app.post('/api/tools/verse-analyzer', async (req, res) => {
   try {
-    console.log('Verse Analyzer request received');
-    const { verse } = req.body;
+    // Check if OpenAI API key is set
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ message: "OpenAI API key is not configured" });
+    }
+
+    const { verse, conversationHistory } = req.body;
     
-    if (!openai.apiKey) {
-      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    // Validate input
+    if (!verse) {
+      return res.status(400).json({ message: "Verse is required" });
+    }
+
+    console.log('Analyzing verse:', verse);
+    
+    let messages = [];
+    
+    // If there's conversation history, use it
+    if (conversationHistory && Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+      messages = [
+        {
+          role: 'system',
+          content: `You are a Bible scholar specializing in detailed verse analysis. 
+          Provide helpful, insightful information about Bible verses, their meanings, historical context, 
+          and applications. Use markdown formatting for clear sections.
+          
+          The user has submitted this verse or reference for analysis: "${verse}"
+          
+          Now they are asking a follow-up question. Provide a helpful, educational response.`
+        },
+        ...conversationHistory
+      ];
+    } else {
+      // Default system prompt for initial analysis
+      messages = [
+        {
+          role: 'system',
+          content: `You are a Bible scholar specializing in detailed verse analysis. 
+          Provide helpful, insightful information about Bible verses, their meanings, historical context, 
+          and applications. Use markdown formatting for clear sections.
+          
+          For each verse analyzed, include:
+          
+          1. **Translation Check**: If a full verse is given, verify it against common translations (KJV, NIV, ESV, etc.) or identify the translation if possible. If only a reference is given, provide the verse from a common translation.
+          
+          2. **Historical Context**: Explain when and why this verse was written, including author, audience, and setting.
+          
+          3. **Literary Context**: Explain how this verse fits into the surrounding passages and the broader biblical narrative.
+          
+          4. **Key Terms**: Identify and explain important words, phrases, or concepts, especially those that have specific meanings in the original languages.
+          
+          5. **Theological Significance**: Explain the key biblical truths or principles illustrated in this verse.
+          
+          6. **Interpretive Issues**: Note if there are different understandings of this verse among scholars or denominations.
+          
+          7. **Application**: Suggest how this verse might be applied to contemporary life.
+          
+          8. **Related Verses**: Provide 2-3 related verses that shed additional light on this passage.
+          
+          When a user submits a verse or reference, provide a detailed analysis following this structure.
+          Format your response with clear markdown headings and concise, insightful content under each section.`
+        },
+        {
+          role: 'user',
+          content: `Analyze this verse: ${verse}`
+        }
+      ];
     }
     
-    console.log(`Analyzing verse: ${verse}`);
-    
-    const messages = [
-      {
-        role: 'system',
-        content: `You are a Bible scholar specializing in detailed verse analysis. Provide comprehensive analysis of Bible verses 
-        with linguistic insights, cultural context, theological meaning, and practical applications. Structure your response with 
-        clear sections using markdown formatting. Your analysis should be educational, insightful, and respectful of various 
-        interpretations. If given a reference without the verse text, try to recall the verse content first, then analyze it.`
-      },
-      {
-        role: 'user',
-        content: `Please analyze this Bible verse or reference: "${verse}". If this is just a reference without the full verse, 
-        please include the verse text first. Then provide detailed analysis including: original language insights if relevant, 
-        historical/cultural context, theological significance, connections to other passages, and practical applications. 
-        Structure your response with clear markdown formatting.`
-      }
-    ];
-    
-    const response = await openai.chat.completions.create({
+    // Call OpenAI API for chat completion
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: messages,
-      max_tokens: 1000,
-      temperature: 0.6,
+      temperature: 0.7,
+      max_tokens: 1000
+    });
+
+    // Extract response
+    const analysisText = completion.choices[0].message.content;
+    
+    console.log('Sending analysis response');
+    
+    // Send successful response
+    res.json({ 
+      analysis: analysisText
     });
     
-    console.log('Response received from OpenAI for Verse Analyzer');
-    
-    res.json({
-      analysis: response.choices[0].message.content
-    });
   } catch (error) {
-    console.error('Verse Analyzer error:', error);
-    res.status(500).json({
-      message: error.message || 'Something went wrong'
+    console.error('Error in verse analyzer API:', error);
+    res.status(500).json({ 
+      message: `Error processing verse analysis: ${error.message}` 
     });
   }
 });
