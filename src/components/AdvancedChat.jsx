@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-const AdvancedChat = () => {
+const AdvancedChat = ({
+  messages = [],
+  isLoading = false,
+  error = '',
+  serverStatus = 'checking',
+  onSendMessage
+}) => {
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [serverStatus, setServerStatus] = useState('checking');
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when messages change
@@ -15,86 +17,18 @@ const AdvancedChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Check if the server is running when the component mounts
-  useEffect(() => {
-    const checkServerHealth = async () => {
-      try {
-        setServerStatus('checking');
-        const response = await fetch('/api/health');
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Server health check for advanced chat:', data);
-          setServerStatus('online');
-          
-          if (!data.env.apiKeySet) {
-            setError('OpenAI API key is not configured on the server');
-          }
-        } else {
-          setServerStatus('offline');
-          setError('Cannot connect to the chat server');
-        }
-      } catch (err) {
-        console.error('Server health check failed:', err);
-        setServerStatus('offline');
-        setError('Cannot connect to the chat server. Make sure to run "npm run server"');
-      }
-    };
-
-    checkServerHealth();
-  }, []);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
     // Don't try to send if server is offline
     if (serverStatus !== 'online') {
-      setError('Cannot send message: server is offline');
       return;
     }
 
-    // Reset any previous errors
-    setError('');
-    
-    // Add user message to chat
-    const userMessage = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
+    // Call the parent's send message function
+    await onSendMessage(input);
     setInput('');
-
-    try {
-      console.log('Sending advanced chat request...');
-      const response = await fetch('/api/chat/advanced', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage],
-        }),
-      });
-
-      console.log('Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error response:', errorData);
-        throw new Error(errorData.message || 'Failed to get response');
-      }
-
-      const data = await response.json();
-      console.log('Received advanced response:', data);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
-    } catch (error) {
-      console.error('Error in advanced chat:', error);
-      setError(error.message || 'An unexpected error occurred');
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error. Please try again later.' 
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   return (
