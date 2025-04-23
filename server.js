@@ -97,95 +97,250 @@ app.post('/api/chat/advanced', async (req, res) => {
   }
 });
 
-// Visual Parallels Tool Endpoint
-app.post('/api/tools/visual-parallels', async (req, res) => {
+// Generate Parallel Image Endpoint
+app.post('/api/tools/generate-parallel-image', async (req, res) => {
   try {
-    console.log('Visual Parallels request received');
-    const { query } = req.body;
+    console.log('Parallel Image Generation request received');
+    const { parallelData } = req.body;
     
     if (!openai.apiKey) {
       return res.status(500).json({ message: 'OpenAI API key is not configured' });
     }
     
-    console.log(`Generating visual parallels for query: ${query}`);
-    
-    const systemPrompt = `You are a Bible scholar specializing in comparing Old and New Testament themes, symbols, and concepts.
-    
-    Analyze the user's query, which may be about biblical parallels, typology, or thematic connections. Even if they don't explicitly mention Old and New Testament elements, identify the most relevant comparison to make.
-    
-    Your task is to provide a structured JSON response that will be used to create a visual side-by-side comparison.
-    
-    The response must be valid JSON with the following structure and MUST follow this EXACT format:
-    {
-      "title": "A concise title describing the parallel",
-      "summary": "A brief explanation of the connection between the Old and New Testament elements",
-      "oldTestament": {
-        "name": "Name of the Old Testament element (person, event, symbol, etc.)",
-        "reference": "Primary biblical reference (e.g., 'Genesis 22:1-18')",
-        "description": "Detailed description of the Old Testament element",
-        "significance": "Theological/historical significance within the Old Testament context",
-        "keyVerses": ["Verse 1", "Verse 2", "Verse 3"],
-        "keywords": ["keyword1", "keyword2", "keyword3"]
-      },
-      "newTestament": {
-        "name": "Name of the New Testament element (person, event, symbol, etc.)",
-        "reference": "Primary biblical reference (e.g., 'John 3:16')",
-        "description": "Detailed description of the New Testament element",
-        "significance": "Theological significance and fulfillment aspects",
-        "keyVerses": ["Verse 1", "Verse 2", "Verse 3"],
-        "keywords": ["keyword1", "keyword2", "keyword3"]
-      },
-      "connections": {
-        "symbolic": "Explanation of symbolic parallels",
-        "thematic": "Explanation of thematic parallels",
-        "prophetic": "Explanation of prophetic fulfillment (if applicable)",
-        "theological": "Shared theological principles"
-      },
-      "visualElements": {
-        "color": "A suggested color theme (e.g., 'blue-red', 'purple-gold')",
-        "symbol": "A suggested symbol representing this parallel (e.g., 'lamb', 'temple', 'crown')",
-        "visualDescription": "Brief description of how to visually represent this parallel"
-      }
+    if (!parallelData) {
+      return res.status(400).json({ message: 'Parallel data is required' });
     }
-
-    Ensure your JSON is properly formatted and valid. Focus on making accurate, theologically sound connections.`;
     
-    const userPrompt = `Please analyze this request and provide a visual parallel between Old and New Testament elements: "${query}"`;
+    // Construct a prompt for image generation that is appropriate and educational
+    const prompt = constructImagePrompt(parallelData);
+    console.log('Generated image prompt:', prompt);
     
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 1500,
-      temperature: 0.7,
-      response_format: { type: "json_object" }
+    // Call OpenAI to generate the image
+    const result = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt: prompt,
+      response_format: "b64_json",
+      size: "1024x1024",
+      quality: "standard"
     });
     
-    console.log('Response received from OpenAI for Visual Parallels');
+    // Send back the base64-encoded image
+    if (result.data && result.data[0] && result.data[0].b64_json) {
+      console.log('Image generated successfully');
+      res.json({
+        image: result.data[0].b64_json,
+        prompt: prompt
+      });
+    } else {
+      throw new Error('Image generation failed');
+    }
+  } catch (error) {
+    console.error('Image generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Image generation failed'
+    });
+  }
+});
+
+// Visual Parallels Tool
+app.post('/api/tools/visual-parallels', async (req, res) => {
+  const { query } = req.body;
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('API key not configured');
+    return res.status(500).json({ message: 'API key not configured on the server' });
+  }
+
+  if (!query) {
+    return res.status(400).json({ message: 'Query is required' });
+  }
+
+  try {
+    console.log(`Received visual parallel request for: ${query}`);
     
-    // Parse the response to ensure it's valid JSON
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            "role": "system",
+            "content": `You are a Biblical scholar specializing in typology and parallels between the Old and New Testament. 
+            Your task is to identify and explain parallels between the Old and New Testament based on the user's query.
+            You should provide a structured response in the following JSON format:
+            
+            {
+              "title": "Title of the Parallel",
+              "summary": "Brief one-sentence summary of the parallel",
+              "oldTestament": {
+                "name": "Name of the Old Testament element",
+                "reference": "Scripture reference(s)",
+                "description": "Detailed description of the Old Testament element",
+                "significance": "Explanation of its significance in the Old Testament context",
+                "keyVerses": ["Verse 1", "Verse 2"],
+                "keywords": ["Keyword1", "Keyword2"]
+              },
+              "newTestament": {
+                "name": "Name of the New Testament element",
+                "reference": "Scripture reference(s)",
+                "description": "Detailed description of the New Testament element",
+                "significance": "Explanation of its significance in the New Testament context",
+                "keyVerses": ["Verse 1", "Verse 2"],
+                "keywords": ["Keyword1", "Keyword2"]
+              },
+              "connections": {
+                "symbolic": "Explanation of symbolic connections",
+                "thematic": "Explanation of thematic connections",
+                "prophetic": "Explanation of prophetic connections",
+                "theological": "Explanation of theological connections"
+              },
+              "visualElements": {
+                "color": "A color theme that symbolically represents this parallel",
+                "symbol": "A symbolic object or image that represents this parallel",
+                "visualDescription": "A detailed description of how this parallel could be visually represented"
+              }
+            }
+            
+            Use Markdown formatting in the description, significance, and connections fields. Ensure your response is valid JSON.`
+          },
+          {
+            "role": "user",
+            "content": query
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2500
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('OpenAI API Error:', errorData);
+      return res.status(response.status).json({ 
+        message: 'Error generating visual parallel',
+        error: errorData
+      });
+    }
+
+    const data = await response.json();
+    console.log('OpenAI response received');
+    
     let parallelData;
     try {
-      parallelData = JSON.parse(response.choices[0].message.content);
-    } catch (parseError) {
-      console.error('Error parsing JSON response:', parseError);
-      // If parsing fails, return the raw text
-      return res.status(500).json({
-        message: "Failed to generate proper JSON format. Please try a different query."
+      parallelData = JSON.parse(data.choices[0].message.content);
+    } catch (error) {
+      console.error('Error parsing JSON from OpenAI:', error);
+      return res.status(500).json({ 
+        message: 'Error processing the response',
+        error: 'Invalid JSON received from OpenAI'
       });
     }
     
     res.json(parallelData);
-    
   } catch (error) {
-    console.error('Visual Parallels error:', error);
-    res.status(500).json({
-      message: error.message || 'Something went wrong'
-    });
+    console.error('Error in visual parallels endpoint:', error);
+    res.status(500).json({ message: 'An error occurred while generating the visual parallel' });
   }
 });
+
+// Image Generation for Visual Parallels
+app.post('/api/tools/generate-parallel-image', async (req, res) => {
+  const { parallelData } = req.body;
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('API key not configured');
+    return res.status(500).json({ message: 'API key not configured on the server' });
+  }
+
+  if (!parallelData) {
+    return res.status(400).json({ message: 'Parallel data is required' });
+  }
+
+  try {
+    console.log(`Generating image for parallel: ${parallelData.title}`);
+    
+    // Construct a prompt that won't trigger content restrictions
+    const prompt = constructImagePrompt(parallelData);
+    
+    console.log('Using image prompt:', prompt);
+    
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt: prompt,
+        n: 1,
+        response_format: "b64_json",
+        size: "1024x1024",
+        quality: "standard"
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('OpenAI API Error:', errorData);
+      return res.status(response.status).json({ 
+        message: 'Error generating image',
+        error: errorData
+      });
+    }
+
+    const data = await response.json();
+    console.log('Image generation successful');
+    
+    // Send back the base64-encoded image
+    res.json({
+      image: data.data[0].b64_json,
+      prompt: prompt
+    });
+  } catch (error) {
+    console.error('Error in image generation endpoint:', error);
+    res.status(500).json({ message: 'An error occurred while generating the image' });
+  }
+});
+
+// Helper function to construct an image prompt from parallel data
+function constructImagePrompt(parallelData) {
+  // Get key elements from the parallel data
+  const { title, visualElements, oldTestament, newTestament } = parallelData;
+  
+  // Create a prompt that focuses on symbolic representation rather than literal religious imagery
+  // This helps avoid content policy restrictions while still creating meaningful visuals
+  let prompt = `Create a metaphorical, symbolic, and artistic illustration for Bible study materials titled "${title}". `;
+  
+  // Add visual description if available
+  if (visualElements && visualElements.visualDescription) {
+    prompt += `The image should show: ${visualElements.visualDescription} `;
+  }
+  
+  // Add symbolic elements
+  if (oldTestament && newTestament) {
+    prompt += `This illustrates the connection between ${oldTestament.name} from the Old Testament and ${newTestament.name} from the New Testament. `;
+  }
+  
+  // Add color theme
+  if (visualElements && visualElements.color) {
+    prompt += `Use a color palette based on ${visualElements.color}. `;
+  }
+  
+  // Add symbolic object
+  if (visualElements && visualElements.symbol) {
+    prompt += `Incorporate the symbol of ${visualElements.symbol} in a creative way. `;
+  }
+  
+  // Add style guidelines to ensure appropriate content
+  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
+  
+  return prompt;
+}
 
 // Bible Commentary Tool Endpoint
 app.post('/api/tools/bible-commentary', async (req, res) => {
