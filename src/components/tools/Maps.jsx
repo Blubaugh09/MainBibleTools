@@ -168,75 +168,77 @@ const Maps = () => {
   // Initialize map with locations
   const initializeMap = () => {
     if (!mapData || !mapData.locations || mapData.locations.length === 0 || !mapRef.current) {
+      console.error("Cannot initialize map - missing data or DOM element", {
+        hasMapData: !!mapData,
+        hasLocations: !!(mapData && mapData.locations),
+        locationsLength: mapData?.locations?.length || 0,
+        hasMapRef: !!mapRef.current
+      });
       return;
     }
+
+    console.log("Initializing map with locations:", mapData.locations);
 
     // Clear any existing map
     mapRef.current.innerHTML = '';
 
-    // Load Leaflet map library dynamically
-    const loadLeaflet = async () => {
-      // Check if Leaflet is already loaded
-      if (!window.L) {
-        // Create link element for Leaflet CSS
-        const leafletCss = document.createElement('link');
-        leafletCss.rel = 'stylesheet';
-        leafletCss.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(leafletCss);
-        
-        // Create script element for Leaflet JS
-        const leafletScript = document.createElement('script');
-        leafletScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        document.head.appendChild(leafletScript);
-        
-        // Wait for script to load
-        await new Promise(resolve => {
-          leafletScript.onload = resolve;
-        });
-      }
-      
-      // Initialize map
-      const L = window.L;
-      
-      // Calculate map bounds based on all locations
-      const allLats = mapData.locations.map(loc => loc.coordinates[0]);
-      const allLngs = mapData.locations.map(loc => loc.coordinates[1]);
-      
-      const centerLat = allLats.reduce((sum, lat) => sum + lat, 0) / allLats.length;
-      const centerLng = allLngs.reduce((sum, lng) => sum + lng, 0) / allLngs.length;
-      
-      // Initialize the map
-      const map = L.map(mapRef.current).setView([centerLat, centerLng], 8);
-      
+    try {
+      // Directly use Leaflet since we've already imported it
+      // Create map instance
+      const map = L.map(mapRef.current);
+      mapInstanceRef.current = map;
+
       // Add the OpenStreetMap tiles
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
-      
-      // Add markers for each location
+
+      // Process locations and add markers
+      const markers = [];
       mapData.locations.forEach((location, index) => {
-        const marker = L.marker([location.coordinates[0], location.coordinates[1]]).addTo(map);
+        if (!location.coordinates || location.coordinates.length < 2) {
+          console.warn(`Location ${location.name} has invalid coordinates`, location.coordinates);
+          return;
+        }
+
+        const lat = location.coordinates[0];
+        const lng = location.coordinates[1];
         
-        // Add a popup with basic info
-        marker.bindPopup(`<b>${location.name}</b><br>${location.shortDescription || ''}`);
+        console.log(`Adding marker for ${location.name} at [${lat}, ${lng}]`);
         
-        // Add a click handler to update the selected location
-        marker.on('click', () => {
-          setSelectedLocation(location);
-        });
+        try {
+          const marker = L.marker([lat, lng]).addTo(map);
+          markers.push(marker);
+          
+          // Add a popup with basic info
+          marker.bindPopup(`<b>${location.name}</b><br>${location.shortDescription || ''}`);
+          
+          // Add a click handler to update the selected location
+          marker.on('click', () => {
+            setSelectedLocation(location);
+          });
+        } catch (err) {
+          console.error(`Error adding marker for ${location.name}:`, err);
+        }
       });
       
-      // Set the map bounds to include all markers
-      const bounds = L.latLngBounds(mapData.locations.map(loc => [loc.coordinates[0], loc.coordinates[1]]));
-      map.fitBounds(bounds, { padding: [50, 50] });
+      // If we have markers, set the view to fit them all
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds(), { padding: [50, 50] });
+      } else {
+        // Default view centered on Jerusalem if no markers
+        map.setView([31.7683, 35.2137], 8);
+      }
       
       // Select the first location by default
       if (mapData.locations.length > 0 && !selectedLocation) {
         setSelectedLocation(mapData.locations[0]);
       }
-    };
-    
-    loadLeaflet();
+    } catch (error) {
+      console.error("Error initializing map:", error);
+      setError("Failed to initialize map. Please try again.");
+    }
   };
 
   // Reset current map
@@ -422,14 +424,30 @@ const Maps = () => {
     
     setIsLoading(true);
     setError('');
+    setMapData(null); // Clear previous map data
     
     try {
+      console.log(`Generating map for query: "${mapInput}"`);
       const response = await axios.post('/api/maps', {
         query: mapInput
       });
       
+      console.log('Response received:', response.status, response.statusText);
+      console.log('Map data:', response.data);
+      
+      if (!response.data || !response.data.locations || !Array.isArray(response.data.locations)) {
+        throw new Error('Invalid response format from server');
+      }
+      
       setMapData(response.data);
       setCurrentSavedMapId(null);
+      
+      // Initialize map after data is set
+      setTimeout(() => {
+        if (mapRef.current) {
+          initializeMap();
+        }
+      }, 100);
       
       if (currentUser) {
         try {
@@ -442,7 +460,15 @@ const Maps = () => {
       }
     } catch (error) {
       console.error("Map generation error:", error);
-      setError(error.response?.data?.error || "Failed to generate map data. Please try again.");
+      if (error.response) {
+        console.error("Error response:", error.response.status, error.response.data);
+        setError(error.response.data?.message || "Failed to generate map data. Server error.");
+      } else if (error.request) {
+        console.error("No response received:", error.request);
+        setError("Failed to reach the server. Please try again later.");
+      } else {
+        setError(error.message || "Failed to generate map data. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
