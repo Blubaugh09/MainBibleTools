@@ -624,6 +624,77 @@ app.post('/api/maps', async (req, res) => {
   }
 });
 
+// Biblical Image Generator Endpoint
+app.post('/api/tools/biblical-image', async (req, res) => {
+  try {
+    console.log('Biblical Image Generation request received');
+    const { prompt } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!prompt) {
+      return res.status(400).json({ message: 'Prompt is required' });
+    }
+    
+    // Construct a prompt that is appropriate and complies with content policies
+    const enhancedPrompt = constructBiblicalImagePrompt(prompt);
+    console.log('Enhanced biblical image prompt:', enhancedPrompt);
+    
+    try {
+      // Try to generate an image with DALL-E 3
+      const result = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+        quality: "standard"
+      });
+      
+      // If we have a URL, return it
+      if (result.data && result.data[0] && result.data[0].url) {
+        console.log('Biblical image generated successfully with URL');
+        res.json({
+          image: result.data[0].url,
+          prompt: enhancedPrompt
+        });
+      } else {
+        throw new Error('Image generation failed - no URL returned');
+      }
+    } catch (dallE3Error) {
+      // If DALL-E 3 fails, fallback to DALL-E 2 with b64_json
+      console.log('Falling back to DALL-E 2 with base64:', dallE3Error.message);
+      
+      // Try with DALL-E 2 and b64_json
+      const fallbackResult = await openai.images.generate({
+        model: "dall-e-2",
+        prompt: enhancedPrompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      });
+      
+      if (fallbackResult.data && fallbackResult.data[0] && fallbackResult.data[0].b64_json) {
+        console.log('Biblical image generated successfully with base64');
+        // Return as a complete data URL
+        const dataUrl = `data:image/png;base64,${fallbackResult.data[0].b64_json}`;
+        res.json({
+          image: dataUrl,
+          prompt: enhancedPrompt
+        });
+      } else {
+        throw new Error('Both image generation methods failed');
+      }
+    }
+  } catch (error) {
+    console.error('Biblical image generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Image generation failed'
+    });
+  }
+});
+
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
@@ -673,6 +744,26 @@ function constructImagePrompt(parallelData) {
   
   // Add style guidelines to ensure appropriate content
   prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. Avoid depicting specific religious figures or scenes that might be considered iconography. Create a thoughtful, conceptual illustration that evokes the theme while remaining respectful and appropriate.";
+  
+  return prompt;
+}
+
+// Helper function to construct a biblical image prompt
+function constructBiblicalImagePrompt(originalPrompt) {
+  // Create a prompt that focuses on educational and artistic representation
+  // This helps avoid content policy restrictions while creating meaningful biblical imagery
+  let prompt = `Create an artistic, conceptual illustration for biblical education materials showing: ${originalPrompt}. `;
+  
+  // Add style guidelines to ensure appropriate content
+  prompt += "The style should be symbolic, abstract, and educational - suitable for a theological textbook or study guide. ";
+  prompt += "Avoid depicting specific religious figures in a way that might be considered iconography. ";
+  prompt += "Create a thoughtful, conceptual illustration that evokes the biblical theme while remaining respectful and appropriate. ";
+  prompt += "Focus on landscapes, symbols, architecture, and artistic representation rather than realistic depictions of biblical figures.";
+  
+  // Ensure the prompt isn't too long for DALL-E
+  if (prompt.length > 950) {
+    prompt = prompt.substring(0, 950);
+  }
   
   return prompt;
 } 
