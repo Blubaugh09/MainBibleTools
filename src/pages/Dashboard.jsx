@@ -5,6 +5,7 @@ import BibleCommentary from '../components/tools/BibleCommentary';
 import VerseAnalyzer from '../components/tools/VerseAnalyzer';
 import VisualParallels from '../components/tools/VisualParallels';
 import Timeline from '../components/tools/Timeline';
+import Maps from '../components/tools/Maps';
 import AdvancedChat from '../components/AdvancedChat';
 
 const Dashboard = () => {
@@ -60,6 +61,13 @@ const Dashboard = () => {
       description: 'Generate visual timelines of biblical events, characters, and periods',
       icon: '📅',
       color: 'green'
+    },
+    {
+      id: 'maps',
+      name: 'Biblical Maps',
+      description: 'Explore locations and geography mentioned in the Bible',
+      icon: '🗺️',
+      color: 'amber'
     }
   ];
 
@@ -77,6 +85,8 @@ const Dashboard = () => {
         return <VisualParallels />;
       case 'timeline':
         return <Timeline />;
+      case 'maps':
+        return <Maps />;
       case 'chat':
       default:
         return <AdvancedChat />;
@@ -140,6 +150,10 @@ const Dashboard = () => {
                   bgClass = "bg-green-50";
                   textClass = "text-green-700";
                   activeClass = "bg-green-100 border-green-300";
+                } else if (tool.color === 'amber') {
+                  bgClass = "bg-amber-50";
+                  textClass = "text-amber-700";
+                  activeClass = "bg-amber-100 border-amber-300";
                 }
                 
                 return (
