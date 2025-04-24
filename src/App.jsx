@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import VisualParallelsView from './pages/tools/VisualParallelsView';
+import TimelineView from './pages/tools/TimelineView';
 
 const App = () => {
   return (
@@ -29,6 +30,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <VisualParallelsView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/timeline" 
+            element={
+              <PrivateRoute>
+                <TimelineView />
               </PrivateRoute>
             } 
           />

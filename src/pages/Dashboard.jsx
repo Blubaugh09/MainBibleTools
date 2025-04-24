@@ -4,6 +4,7 @@ import { useAuth } from '../firebase/AuthContext';
 import BibleCommentary from '../components/tools/BibleCommentary';
 import VerseAnalyzer from '../components/tools/VerseAnalyzer';
 import VisualParallels from '../components/tools/VisualParallels';
+import Timeline from '../components/tools/Timeline';
 import AdvancedChat from '../components/AdvancedChat';
 
 const Dashboard = () => {
@@ -52,6 +53,13 @@ const Dashboard = () => {
       description: 'Explore connections between Old and New Testament themes and symbols',
       icon: '🔄',
       color: 'teal'
+    },
+    {
+      id: 'timeline',
+      name: 'Biblical Timeline',
+      description: 'Generate visual timelines of biblical events, characters, and periods',
+      icon: '📅',
+      color: 'green'
     }
   ];
 
@@ -67,6 +75,8 @@ const Dashboard = () => {
         return <VerseAnalyzer />;
       case 'visual-parallels':
         return <VisualParallels />;
+      case 'timeline':
+        return <Timeline />;
       case 'chat':
       default:
         return <AdvancedChat />;
@@ -126,6 +136,10 @@ const Dashboard = () => {
                   bgClass = "bg-teal-50";
                   textClass = "text-teal-700";
                   activeClass = "bg-teal-100 border-teal-300";
+                } else if (tool.color === 'green') {
+                  bgClass = "bg-green-50";
+                  textClass = "text-green-700";
+                  activeClass = "bg-green-100 border-green-300";
                 }
                 
                 return (

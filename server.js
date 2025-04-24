@@ -317,6 +317,89 @@ app.post('/api/proxy-image', async (req, res) => {
   }
 });
 
+// Timeline Tool Endpoint
+app.post('/api/tools/timeline', async (req, res) => {
+  try {
+    console.log('Timeline request received');
+    const { query } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Query is required' });
+    }
+    
+    console.log(`Generating timeline for: ${query}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible scholar specializing in biblical chronology and history. 
+        Your task is to create a detailed timeline based on the user's query about biblical events, characters, periods, or books.
+        
+        For any query, even if it's vague or general, you should determine the most relevant biblical timeline to create.
+        
+        Respond with a JSON object in the following format:
+        
+        {
+          "title": "Clear title for the timeline",
+          "description": "Brief overview of what this timeline covers",
+          "events": [
+            {
+              "date": "Date or time period (e.g., '1000 BC', '30-33 AD', or 'During the Exodus')",
+              "title": "Short title for this event",
+              "description": "Detailed description of the event, its significance, and context",
+              "scripture": "Relevant scripture references (e.g., 'Genesis 12:1-9', 'Matthew 4:1-11')"
+            }
+          ],
+          "additionalInfo": "Optional additional context or explanation about the timeline as a whole"
+        }
+        
+        Ensure that:
+        1. Events are in chronological order
+        2. Dates are as specific as biblically and historically possible
+        3. Each event has at least one scripture reference
+        4. The descriptions are informative but concise
+        5. For periods where exact dates are disputed, provide the generally accepted range or approximation
+        
+        Use Markdown formatting in the descriptions for better readability.`
+      },
+      {
+        role: 'user',
+        content: query
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 2000,
+      temperature: 0.7,
+    });
+    
+    console.log('Response received from OpenAI for Timeline');
+    
+    try {
+      const timelineData = JSON.parse(response.choices[0].message.content);
+      res.json(timelineData);
+    } catch (parseError) {
+      console.error('Failed to parse timeline data as JSON:', parseError);
+      // If parsing fails, return the raw content
+      res.status(500).json({ 
+        message: 'Failed to parse timeline data from OpenAI response',
+        rawContent: response.choices[0].message.content
+      });
+    }
+  } catch (error) {
+    console.error('Timeline generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Bible Commentary Tool Endpoint
 app.post('/api/tools/bible-commentary', async (req, res) => {
   try {
