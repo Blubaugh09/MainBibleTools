@@ -8,8 +8,13 @@ import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import axios from 'axios';
 
 const Images = () => {
+  const [activeTab, setActiveTab] = useState('generate'); // 'generate' or 'edit'
   const [imagePrompt, setImagePrompt] = useState('');
+  const [editPrompt, setEditPrompt] = useState('');
   const [generatedImage, setGeneratedImage] = useState(null);
+  const [editedImage, setEditedImage] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [uploadedMask, setUploadedMask] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
@@ -17,13 +22,15 @@ const Images = () => {
   const [savedImages, setSavedImages] = useState([]);
   const resultsRef = useRef(null);
   const { currentUser } = useAuth();
+  const fileInputRef = useRef(null);
+  const maskInputRef = useRef(null);
 
   // Auto-scroll to results when they change
   useEffect(() => {
-    if (generatedImage) {
+    if (generatedImage || editedImage) {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [generatedImage]);
+  }, [generatedImage, editedImage]);
 
   // Check if the server is running when the component mounts
   useEffect(() => {
@@ -56,6 +63,17 @@ const Images = () => {
       fetchSavedImages();
     }
   }, [currentUser]);
+
+  // Handle tab switching
+  const handleTabChange = (tab) => {
+    if (tab === 'edit' && activeTab === 'generate' && generatedImage) {
+      // Transfer the generated image to the edit tab
+      setUploadedImage(generatedImage);
+      setEditPrompt('');
+      setEditedImage(null);
+    }
+    setActiveTab(tab);
+  };
 
   // Helper function to create a clean filename from the prompt
   const createSafeFilename = (prompt) => {
@@ -222,10 +240,15 @@ const Images = () => {
 
   // Reset current image
   const resetImage = () => {
-    setGeneratedImage(null);
+    if (activeTab === 'generate') {
+      setGeneratedImage(null);
+    } else {
+      setEditedImage(null);
+    }
     setCurrentImageId(null);
   };
 
+  // Handle image generation
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!imagePrompt.trim()) return;
@@ -281,9 +304,95 @@ const Images = () => {
     }
   };
 
+  // Handle image file selection
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedImage(e.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle mask file selection
+  const handleMaskUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedMask(e.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle image editing submission
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editPrompt.trim() || !uploadedImage) return;
+
+    // Don't try to send if server is offline
+    if (serverStatus !== 'online') {
+      setError('Cannot edit image: server is offline');
+      return;
+    }
+
+    // Reset any previous errors
+    setError('');
+    setIsLoading(true);
+    setEditedImage(null);
+
+    try {
+      console.log(`Editing image with prompt: "${editPrompt}"`);
+      const response = await axios.post('/api/tools/edit-biblical-image', {
+        prompt: editPrompt,
+        imageData: uploadedImage,
+        maskData: uploadedMask
+      });
+      
+      console.log('Response received:', response.status, response.statusText);
+      
+      if (!response.data || !response.data.image) {
+        throw new Error('Invalid response format from server');
+      }
+      
+      setEditedImage(response.data.image);
+      
+      // Save to Firestore if user is logged in
+      if (currentUser) {
+        const storedImageUrl = await saveImageToStorage(response.data.image, editPrompt);
+        if (storedImageUrl) {
+          saveImageToFirestore(storedImageUrl, `Edited: ${editPrompt}`);
+        }
+      }
+    } catch (error) {
+      console.error('Image edit error:', error);
+      if (error.response) {
+        console.error('Error response:', error.response.status, error.response.data);
+        setError(error.response.data?.message || 'Failed to edit image. Server error.');
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+        setError('Failed to reach the server. Please try again later.');
+      } else {
+        setError(error.message || 'Failed to edit image. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Use saved image
   const loadSavedImage = (image) => {
-    setImagePrompt(image.prompt || '');
-    setGeneratedImage(image.imageUrl);
+    if (activeTab === 'generate') {
+      setImagePrompt(image.prompt || '');
+      setGeneratedImage(image.imageUrl);
+    } else {
+      setEditPrompt('');
+      setUploadedImage(image.imageUrl);
+      setUploadedMask(null);
+    }
     setCurrentImageId(image.id);
   };
 
@@ -315,53 +424,215 @@ const Images = () => {
         </div>
       )}
       
+      {/* Tab navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="flex -mb-px">
+          <button
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === 'generate'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => handleTabChange('generate')}
+          >
+            Generate Image
+          </button>
+          <button
+            className={`py-4 px-6 font-medium text-sm border-b-2 focus:outline-none ${
+              activeTab === 'edit'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => handleTabChange('edit')}
+          >
+            Edit Image
+          </button>
+        </nav>
+      </div>
+      
       <div className="flex flex-col lg:flex-row">
         {/* Input area */}
         <div className="p-4 bg-gray-50 lg:w-1/3">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="image-prompt" className="block text-sm font-medium text-gray-700 mb-1">
-                Describe the biblical image you'd like to create
-              </label>
-              <textarea
-                id="image-prompt"
-                value={imagePrompt}
-                onChange={(e) => setImagePrompt(e.target.value)}
-                placeholder="Example: Noah's ark with animals entering two by two, or The Sermon on the Mount with Jesus teaching a crowd on a hillside"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-32"
-                disabled={isLoading}
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Be specific about what biblical scene, character, or concept you want to visualize.
-              </p>
-            </div>
-            
-            <button
-              type="submit"
-              disabled={isLoading || !imagePrompt.trim() || serverStatus !== 'online'}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Generating Image...
-                </div>
-              ) : 'Generate Biblical Image'}
-            </button>
-            
-            {generatedImage && (
+          {activeTab === 'generate' ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="image-prompt" className="block text-sm font-medium text-gray-700 mb-1">
+                  Describe the biblical image you'd like to create
+                </label>
+                <textarea
+                  id="image-prompt"
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  placeholder="Example: Noah's ark with animals entering two by two, or The Sermon on the Mount with Jesus teaching a crowd on a hillside"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-32"
+                  disabled={isLoading}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Be specific about what biblical scene, character, or concept you want to visualize.
+                </p>
+              </div>
+              
               <button
-                type="button"
-                onClick={resetImage}
-                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                type="submit"
+                disabled={isLoading || !imagePrompt.trim() || serverStatus !== 'online'}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Reset
+                {isLoading ? (
+                  <div className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating Image...
+                  </div>
+                ) : 'Generate Biblical Image'}
               </button>
-            )}
-          </form>
+              
+              {generatedImage && (
+                <div className="mt-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={resetImage}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                  >
+                    Reset
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('edit')}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                  >
+                    Edit This Image
+                  </button>
+                </div>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="upload-image" className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload an image to edit
+                </label>
+                <div className="mt-1 flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current.click()}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={isLoading}
+                  >
+                    Choose Image
+                  </button>
+                  <span className="text-sm text-gray-500">
+                    {uploadedImage ? 'Image selected' : 'No image selected'}
+                  </span>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  id="upload-image"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                  disabled={isLoading}
+                />
+              </div>
+              
+              {uploadedImage && (
+                <div className="mt-4">
+                  <img 
+                    src={uploadedImage} 
+                    alt="Uploaded image to edit" 
+                    className="max-h-40 rounded border border-gray-200"
+                  />
+                </div>
+              )}
+              
+              <div className="border-t border-gray-200 pt-4">
+                <label htmlFor="upload-mask" className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload a mask (optional)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  The mask should be a transparent PNG where areas to edit are transparent and areas to keep are black.
+                </p>
+                <div className="mt-1 flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => maskInputRef.current.click()}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={isLoading || !uploadedImage}
+                  >
+                    Choose Mask
+                  </button>
+                  <span className="text-sm text-gray-500">
+                    {uploadedMask ? 'Mask selected' : 'No mask selected'}
+                  </span>
+                </div>
+                <input
+                  ref={maskInputRef}
+                  type="file"
+                  id="upload-mask"
+                  accept="image/png"
+                  className="hidden"
+                  onChange={handleMaskUpload}
+                  disabled={isLoading || !uploadedImage}
+                />
+              </div>
+              
+              {uploadedMask && (
+                <div className="mt-4">
+                  <img 
+                    src={uploadedMask} 
+                    alt="Uploaded mask" 
+                    className="max-h-40 rounded border border-gray-200"
+                  />
+                </div>
+              )}
+              
+              <div>
+                <label htmlFor="edit-prompt" className="block text-sm font-medium text-gray-700 mb-1">
+                  Describe what you want to change
+                </label>
+                <textarea
+                  id="edit-prompt"
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  placeholder="Example: Add a rainbow over the ark, or Change the hillside to be more lush and green"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 h-32"
+                  disabled={isLoading || !uploadedImage}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Be specific about what you want to change in the image.
+                </p>
+              </div>
+              
+              <button
+                type="submit"
+                disabled={isLoading || !editPrompt.trim() || !uploadedImage || serverStatus !== 'online'}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <div className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Editing Image...
+                  </div>
+                ) : 'Edit Biblical Image'}
+              </button>
+              
+              {editedImage && (
+                <button
+                  type="button"
+                  onClick={resetImage}
+                  className="w-full mt-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                >
+                  Reset
+                </button>
+              )}
+            </form>
+          )}
           
           {/* Saved images */}
           {currentUser && savedImages.length > 0 && (
@@ -393,7 +664,7 @@ const Images = () => {
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-700"></div>
             </div>
-          ) : generatedImage ? (
+          ) : activeTab === 'generate' && generatedImage ? (
             <div className="prose max-w-none">
               <h2 className="text-xl font-bold text-center text-gray-800 mb-4">Generated Biblical Image</h2>
               <div className="flex justify-center">
@@ -410,11 +681,38 @@ const Images = () => {
                 </div>
               </div>
             </div>
+          ) : activeTab === 'edit' && editedImage ? (
+            <div className="prose max-w-none">
+              <h2 className="text-xl font-bold text-center text-gray-800 mb-4">Edited Biblical Image</h2>
+              <div className="flex justify-center">
+                <div className="relative max-w-lg">
+                  <img 
+                    src={editedImage} 
+                    alt={`Edited biblical image based on: ${editPrompt}`} 
+                    className="mx-auto rounded-lg shadow-lg"
+                  />
+                  <div className="mt-4">
+                    <h3 className="text-lg font-medium text-gray-700">Prompt Used:</h3>
+                    <p className="text-gray-600 italic">"{editPrompt}"</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
-              <div className="text-5xl mb-3">🖼️</div>
-              <p className="text-gray-500">Enter a prompt to generate a biblical image</p>
-              <p className="text-gray-400 text-sm mt-2">Visualize scenes, characters, or concepts from Scripture</p>
+              {activeTab === 'generate' ? (
+                <>
+                  <div className="text-5xl mb-3">🖼️</div>
+                  <p className="text-gray-500">Enter a prompt to generate a biblical image</p>
+                  <p className="text-gray-400 text-sm mt-2">Visualize scenes, characters, or concepts from Scripture</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-5xl mb-3">✏️</div>
+                  <p className="text-gray-500">Upload an image to edit</p>
+                  <p className="text-gray-400 text-sm mt-2">Modify existing images or add details to them</p>
+                </>
+              )}
             </div>
           )}
         </div>
