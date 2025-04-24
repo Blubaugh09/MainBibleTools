@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../firebase/AuthContext';
 import BibleCommentary from '../components/tools/BibleCommentary';
 import VerseAnalyzer from '../components/tools/VerseAnalyzer';
 import VisualParallels from '../components/tools/VisualParallels';
 import Timeline from '../components/tools/Timeline';
 import Maps from '../components/tools/Maps';
+import Images from '../components/tools/Images';
 import AdvancedChat from '../components/AdvancedChat';
 
 const Dashboard = () => {
@@ -53,21 +54,32 @@ const Dashboard = () => {
       name: 'Visual Parallels',
       description: 'Explore connections between Old and New Testament themes and symbols',
       icon: '🔄',
-      color: 'teal'
+      color: 'teal',
+      fullPageUrl: '/tools/visual-parallels'
+    },
+    {
+      id: 'images',
+      name: 'Biblical Images',
+      description: 'Generate educational images based on biblical scenes and concepts',
+      icon: '🖼️',
+      color: 'rose',
+      fullPageUrl: '/tools/images'
     },
     {
       id: 'timeline',
       name: 'Biblical Timeline',
       description: 'Generate visual timelines of biblical events, characters, and periods',
       icon: '📅',
-      color: 'green'
+      color: 'green',
+      fullPageUrl: '/tools/timeline'
     },
     {
       id: 'maps',
       name: 'Biblical Maps',
       description: 'Explore locations and geography mentioned in the Bible',
       icon: '🗺️',
-      color: 'amber'
+      color: 'amber',
+      fullPageUrl: '/tools/maps'
     }
   ];
 
@@ -83,6 +95,8 @@ const Dashboard = () => {
         return <VerseAnalyzer />;
       case 'visual-parallels':
         return <VisualParallels />;
+      case 'images':
+        return <Images />;
       case 'timeline':
         return <Timeline />;
       case 'maps':
@@ -119,6 +133,14 @@ const Dashboard = () => {
             <h2 className="text-xl font-semibold text-gray-800 mb-2">
               <span className="mr-2">{currentTool.icon}</span>
               {currentTool.name}
+              {currentTool.fullPageUrl && (
+                <Link 
+                  to={currentTool.fullPageUrl} 
+                  className="ml-2 text-sm text-blue-500 hover:text-blue-700"
+                >
+                  Open full page →
+                </Link>
+              )}
             </h2>
             <p className="text-gray-600 mb-4">{currentTool.description}</p>
             

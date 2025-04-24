@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import VisualParallelsView from './pages/tools/VisualParallelsView';
 import TimelineView from './pages/tools/TimelineView';
 import MapsView from './pages/tools/MapsView';
+import ImagesView from './pages/tools/ImagesView';
 
 const App = () => {
   return (
@@ -47,6 +48,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <MapsView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/images" 
+            element={
+              <PrivateRoute>
+                <ImagesView />
               </PrivateRoute>
             } 
           />
