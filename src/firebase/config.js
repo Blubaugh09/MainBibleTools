@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Helper to get env vars from either location
 const getEnvVar = (key, reactKey) => {
@@ -37,5 +38,6 @@ console.log("Firebase config initialized with:", {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-export { auth, db }; 
+export { auth, db, storage }; 

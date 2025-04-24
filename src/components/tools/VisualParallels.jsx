@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../firebase/AuthContext';
-import { db } from '../../firebase/config';
+import { db, storage } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const VisualParallels = () => {
   const [queryInput, setQueryInput] = useState('');
@@ -15,6 +16,7 @@ const VisualParallels = () => {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState('');
+  const [storedImageUrl, setStoredImageUrl] = useState(null);
   const resultsRef = useRef(null);
   const { currentUser } = useAuth();
 
@@ -110,6 +112,66 @@ const VisualParallels = () => {
     }
   };
 
+  // Helper function to create a clean filename from the query
+  const createSafeFilename = (query) => {
+    // Replace spaces and special characters with underscores
+    return query
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '_')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 50); // Limit filename length
+  };
+
+  // Save image to Firebase Storage
+  const saveImageToStorage = async (imageUrl, query) => {
+    if (!currentUser) {
+      console.log('User not logged in, cannot save image');
+      return null;
+    }
+
+    try {
+      // Create a safe filename from the query
+      const filename = createSafeFilename(query);
+      
+      // Reference to the image location in Firebase Storage
+      const imagePath = `mainBibleTools/visualParallels/${filename}.jpg`;
+      const storageRef = ref(storage, imagePath);
+      
+      // Fetch the image from the URL
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      
+      // Convert blob to base64 string for upload
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            // Upload the image to Firebase Storage
+            const base64String = reader.result.split(',')[1];
+            await uploadString(storageRef, base64String, 'base64', {
+              contentType: 'image/jpeg'
+            });
+            
+            // Get the download URL
+            const downloadUrl = await getDownloadURL(storageRef);
+            console.log('Image saved to Firebase Storage:', imagePath);
+            resolve(downloadUrl);
+          } catch (error) {
+            console.error('Error uploading image:', error);
+            reject(error);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Error saving image to storage:', error);
+      return null;
+    }
+  };
+
   // Save results to Firestore
   const saveParallelToFirestore = async (data, query, imageData = null) => {
     try {
@@ -128,6 +190,7 @@ const VisualParallels = () => {
           title: data.title,
           parallelData: data,
           generatedImage: imageData,
+          storedImageUrl: storedImageUrl,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -151,6 +214,11 @@ const VisualParallels = () => {
             updateData.generatedImage = imageData;
           }
           
+          // Add stored image URL if it exists
+          if (storedImageUrl) {
+            updateData.storedImageUrl = storedImageUrl;
+          }
+          
           await updateDoc(parallelRef, updateData);
           
           console.log('Updated visual parallel:', currentParallelId);
@@ -164,6 +232,7 @@ const VisualParallels = () => {
             title: data.title,
             parallelData: data,
             generatedImage: imageData,
+            storedImageUrl: storedImageUrl,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
@@ -204,10 +273,38 @@ const VisualParallels = () => {
       const data = await response.json();
       console.log('Image generated successfully');
       
+      // Set the generated image URL
       setGeneratedImage(data.image);
       setImagePrompt(data.prompt);
       
-      // Update Firestore with the image
+      // If user is logged in, save the image to Firebase Storage
+      if (currentUser) {
+        try {
+          // Save the image to Firebase Storage
+          const imageUrl = await saveImageToStorage(data.image, queryInput);
+          
+          if (imageUrl) {
+            setStoredImageUrl(imageUrl);
+            console.log('Image stored with URL:', imageUrl);
+            
+            // Update Firestore with the stored image URL
+            if (currentParallelId) {
+              const parallelRef = doc(db, 'mainBibleTools_visualParallels', currentParallelId);
+              await updateDoc(parallelRef, {
+                generatedImage: data.image,
+                storedImageUrl: imageUrl,
+                updatedAt: serverTimestamp()
+              });
+              console.log('Updated Firestore with image URL');
+            }
+          }
+        } catch (storageError) {
+          console.error('Error saving image to storage:', storageError);
+          // Don't fail the whole process if storage fails
+        }
+      }
+      
+      // Update Firestore with the image even if storage failed
       if (currentUser && currentParallelId) {
         saveParallelToFirestore(parallelData, queryInput, data.image);
       }
@@ -226,6 +323,7 @@ const VisualParallels = () => {
     setCurrentParallelId(null);
     setGeneratedImage(null);
     setImagePrompt('');
+    setStoredImageUrl(null);
   };
 
   const handleSubmit = async (e) => {
@@ -244,6 +342,7 @@ const VisualParallels = () => {
     setParallelData(null);
     setGeneratedImage(null);
     setImagePrompt('');
+    setStoredImageUrl(null);
     
     // Reset current parallel
     resetParallel();
@@ -265,6 +364,11 @@ const VisualParallels = () => {
           // Set the image if it exists
           if (existingParallel.generatedImage) {
             setGeneratedImage(existingParallel.generatedImage);
+          }
+          
+          // Set the stored image URL if it exists
+          if (existingParallel.storedImageUrl) {
+            setStoredImageUrl(existingParallel.storedImageUrl);
           }
           
           setIsLoading(false);
@@ -424,6 +528,11 @@ const VisualParallels = () => {
                   />
                   <div className="text-xs text-gray-500 italic mt-2">
                     <p>Prompt: {imagePrompt}</p>
+                    {storedImageUrl && (
+                      <p className="mt-1 text-green-600">
+                        ✓ Image saved to Firebase Storage
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
