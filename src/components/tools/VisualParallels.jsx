@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../firebase/AuthContext';
 import { db, storage } from '../../firebase/config';
-import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query as firestoreQuery, where, getDocs } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 
 const VisualParallels = () => {
@@ -82,15 +82,15 @@ const VisualParallels = () => {
   }, [parallelData]);
 
   // Find existing parallels in Firestore
-  const findExistingParallel = async (query) => {
+  const findExistingParallel = async (searchQuery) => {
     if (!currentUser) return null;
     
     try {
       // Create a query against the collection
-      const q = query(
+      const q = firestoreQuery(
         collection(db, 'mainBibleTools_visualParallels'), 
         where('userId', '==', currentUser.uid),
-        where('query', '==', query)
+        where('query', '==', searchQuery)
       );
       
       const querySnapshot = await getDocs(q);
@@ -98,7 +98,7 @@ const VisualParallels = () => {
       if (!querySnapshot.empty) {
         // Get the first matching document
         const doc = querySnapshot.docs[0];
-        console.log('Found existing visual parallel for query:', query);
+        console.log('Found existing visual parallel for query:', searchQuery);
         return {
           id: doc.id,
           ...doc.data()
