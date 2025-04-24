@@ -11,6 +11,7 @@ import TimelineView from './pages/tools/TimelineView';
 import MapsView from './pages/tools/MapsView';
 import ImagesView from './pages/tools/ImagesView';
 import CharacterStudyView from './pages/tools/CharacterStudyView';
+import PersonalStudyView from './pages/tools/PersonalStudyView';
 
 const App = () => {
   return (
@@ -65,6 +66,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <CharacterStudyView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/personal-study" 
+            element={
+              <PrivateRoute>
+                <PersonalStudyView />
               </PrivateRoute>
             } 
           />

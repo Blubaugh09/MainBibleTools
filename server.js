@@ -923,6 +923,153 @@ app.post('/api/tools/character-study', async (req, res) => {
   }
 });
 
+// Personal Study Tool Endpoint
+app.post('/api/tools/personal-study', async (req, res) => {
+  try {
+    console.log('Personal Study request received');
+    const { query } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Query is required' });
+    }
+    
+    console.log(`Generating personal study plan for: ${query}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible teacher and theologian specializing in creating personalized Bible study plans. 
+        Your task is to create a comprehensive, structured study plan based on the user's query.
+        
+        The user may provide a specific topic, book, character, theme, or question they want to study,
+        or they might have a vaguer request. In any case, you should interpret their request and
+        create the most helpful, thorough study plan possible.
+        
+        Respond with a JSON object in the following format:
+        
+        {
+          "studyPlan": {
+            "title": "Clear title for the study plan",
+            "description": "Brief overview of what this study covers and its importance",
+            "duration": "Estimated time to complete (e.g., '5 days', '2 weeks')",
+            "difficulty": "Beginner, Intermediate, or Advanced",
+            "mainScriptures": ["Primary scripture references for this study"],
+            "keywords": ["Relevant keywords or themes"]
+          },
+          "learningObjectives": [
+            "Specific, measurable learning objectives for this study"
+          ],
+          "sessions": [
+            {
+              "title": "Session title",
+              "focus": "Main focus of this session",
+              "scriptures": ["Scripture references to study"],
+              "activities": [
+                {
+                  "type": "Read", 
+                  "description": "Read the following passages..."
+                },
+                {
+                  "type": "Reflect",
+                  "description": "Consider these questions..."
+                },
+                {
+                  "type": "Apply",
+                  "description": "Practical ways to apply these truths..."
+                }
+              ],
+              "questions": [
+                "Study questions to consider"
+              ],
+              "resources": [
+                {
+                  "type": "Article",
+                  "title": "Resource title",
+                  "description": "Brief description of this resource"
+                }
+              ]
+            }
+          ],
+          "memoryVerses": [
+            {
+              "reference": "Verse reference",
+              "text": "Verse text",
+              "reason": "Why this verse is important for this study"
+            }
+          ],
+          "additionalResources": [
+            {
+              "type": "Book/Commentary/Video/Article",
+              "title": "Resource title",
+              "description": "Description of this resource"
+            }
+          ],
+          "studyMethods": [
+            {
+              "name": "Study method name",
+              "description": "How to use this study method",
+              "steps": ["Step 1", "Step 2", "Step 3"]
+            }
+          ],
+          "prayerFocus": [
+            "Prayer points related to this study"
+          ],
+          "applicationIdeas": [
+            "Practical ways to apply what's been learned"
+          ]
+        }
+        
+        Ensure that:
+        1. The study plan is comprehensive but realistic to complete in the given timeframe
+        2. It includes a mix of reading, reflection, and application
+        3. Questions are thought-provoking and encourage deeper engagement
+        4. Scripture references are accurate and relevant to the topic
+        5. The plan is adaptable for both individual and group study
+        6. It includes practical application suggestions
+        7. Memory verses are chosen for their relevance to the main themes
+        8. Study methods are explained in a way that's accessible to the user's level
+        
+        Based on the user's query, determine the appropriate duration, difficulty, and depth.
+        For vague requests, choose the most fitting topic and create a focused study plan.`
+      },
+      {
+        role: 'user',
+        content: query
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 3000,
+      temperature: 0.7,
+    });
+    
+    console.log('Response received from OpenAI for Personal Study');
+    
+    try {
+      const studyPlanData = JSON.parse(response.choices[0].message.content);
+      res.json(studyPlanData);
+    } catch (parseError) {
+      console.error('Failed to parse study plan data as JSON:', parseError);
+      // If parsing fails, return the raw content
+      res.status(500).json({ 
+        message: 'Failed to parse study plan data from OpenAI response',
+        rawContent: response.choices[0].message.content
+      });
+    }
+  } catch (error) {
+    console.error('Personal study plan generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
