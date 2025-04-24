@@ -346,9 +346,31 @@ const Images = () => {
 
     try {
       console.log(`Editing image with prompt: "${editPrompt}"`);
+      
+      // Check if the image is a URL (not a data URL) and fetch it first
+      let processedImageData = uploadedImage;
+      if (uploadedImage && uploadedImage.startsWith('http')) {
+        try {
+          console.log('Converting URL to data URL for editing');
+          const proxyResponse = await axios.post('/api/proxy-image', {
+            imageUrl: uploadedImage
+          });
+          
+          if (proxyResponse.data && proxyResponse.data.imageData && proxyResponse.data.contentType) {
+            processedImageData = `data:${proxyResponse.data.contentType};base64,${proxyResponse.data.imageData}`;
+            console.log('Successfully converted image URL to data URL');
+          }
+        } catch (proxyError) {
+          console.error('Error converting image URL:', proxyError);
+          setError('Failed to process the image. Please try uploading it directly.');
+          setIsLoading(false);
+          return;
+        }
+      }
+      
       const response = await axios.post('/api/tools/edit-biblical-image', {
         prompt: editPrompt,
-        imageData: uploadedImage,
+        imageData: processedImageData,
         maskData: uploadedMask
       });
       
