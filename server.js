@@ -544,6 +544,86 @@ app.post('/api/tools/verse-analyzer', async (req, res) => {
   }
 });
 
+// Maps Tool Endpoint
+app.post('/api/maps', async (req, res) => {
+  try {
+    console.log('Maps request received');
+    const { query } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Query is required' });
+    }
+    
+    console.log(`Generating map data for: ${query}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible scholar specializing in biblical geography and history. 
+        Your task is to provide detailed information about biblical locations based on the user's query.
+        
+        For any query about biblical locations, journeys, or places, respond with a JSON object in the following format:
+        
+        {
+          "title": "Clear title summarizing the mapped locations",
+          "overview": "Brief overview of the historical and biblical significance of these locations",
+          "locations": [
+            {
+              "name": "Location name",
+              "description": "Detailed description including biblical and historical context",
+              "coordinates": [latitude, longitude],
+              "verses": ["Reference 1", "Reference 2"],
+              "shortDescription": "Very brief description for map tooltips"
+            }
+          ]
+        }
+        
+        Ensure that:
+        1. Coordinates are historically accurate and suitable for mapping (use latitude/longitude)
+        2. Each location has at least one scripture reference
+        3. The descriptions are informative but concise
+        4. Include enough detail to understand the significance of each location
+        
+        Use Markdown formatting in the descriptions for better readability.`
+      },
+      {
+        role: 'user',
+        content: query
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 2000,
+      temperature: 0.7,
+    });
+    
+    console.log('Response received from OpenAI for Maps');
+    
+    try {
+      const mapData = JSON.parse(response.choices[0].message.content);
+      res.json(mapData);
+    } catch (parseError) {
+      console.error('Failed to parse map data as JSON:', parseError);
+      // If parsing fails, return the raw content
+      res.status(500).json({ 
+        message: 'Failed to parse map data from OpenAI response',
+        rawContent: response.choices[0].message.content
+      });
+    }
+  } catch (error) {
+    console.error('Map generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useAuth } from '../firebase/AuthContext';
+import { db } from '../firebase/config';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
 
 const AdvancedChat = () => {
   const [input, setInput] = useState('');
@@ -8,7 +11,10 @@ const AdvancedChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
+  const [chatTitle, setChatTitle] = useState('');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const messagesEndRef = useRef(null);
+  const { currentUser } = useAuth();
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -23,7 +29,7 @@ const AdvancedChat = () => {
         const response = await fetch('/api/health');
         if (response.ok) {
           const data = await response.json();
-          console.log('Server health check for advanced chat:', data);
+          console.log('Server health check:', data);
           setServerStatus('online');
           
           if (!data.env.apiKeySet) {
@@ -42,6 +48,100 @@ const AdvancedChat = () => {
 
     checkServerHealth();
   }, []);
+
+  // Save message to Firestore
+  const saveMessageToFirestore = async (userMessage, assistantMessage) => {
+    try {
+      if (!currentUser) {
+        console.log('User not logged in, cannot save chat history');
+        return;
+      }
+
+      // Format messages for storing
+      const newMessages = [
+        {
+          role: 'user',
+          content: userMessage.content,
+          timestamp: new Date().toISOString()
+        },
+        {
+          role: 'assistant',
+          content: assistantMessage.content,
+          timestamp: new Date().toISOString()
+        }
+      ];
+
+      // If this is the first message in a new conversation
+      if (!currentConversationId) {
+        // Create a title from the first user message
+        const newTitle = userMessage.content.length > 50 
+          ? userMessage.content.substring(0, 47) + '...' 
+          : userMessage.content;
+        
+        setChatTitle(newTitle);
+        
+        // Create a new conversation document
+        const docRef = await addDoc(collection(db, 'mainBibleTools_advancedChat'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          title: newTitle,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          model: 'gpt-4o-mini',
+          messages: newMessages
+        });
+        
+        setCurrentConversationId(docRef.id);
+        console.log('Created new conversation with ID:', docRef.id);
+      } else {
+        // Get the existing conversation document
+        const conversationRef = doc(db, 'mainBibleTools_advancedChat', currentConversationId);
+        const conversationSnap = await getDoc(conversationRef);
+        
+        if (conversationSnap.exists()) {
+          // Update the existing conversation with new messages
+          const existingData = conversationSnap.data();
+          const updatedMessages = [...(existingData.messages || []), ...newMessages];
+          
+          await updateDoc(conversationRef, {
+            messages: updatedMessages,
+            updatedAt: serverTimestamp()
+          });
+          
+          console.log('Updated conversation:', currentConversationId);
+        } else {
+          console.error('Conversation document not found');
+          // If the conversation was deleted, create a new one
+          const docRef = await addDoc(collection(db, 'mainBibleTools_advancedChat'), {
+            userId: currentUser.uid,
+            userEmail: currentUser.email,
+            title: chatTitle || 'Continued conversation',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            model: 'gpt-4o-mini',
+            messages: [...messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date().toISOString()
+            })), ...newMessages]
+          });
+          
+          setCurrentConversationId(docRef.id);
+          console.log('Created replacement conversation with ID:', docRef.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving chat to Firestore:', err);
+      // Don't show this error to user as it's not critical to chat function
+    }
+  };
+
+  // Reset conversation - use when starting a new chat
+  const resetConversation = () => {
+    setMessages([]);
+    setChatTitle('');
+    setCurrentConversationId(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -63,7 +163,7 @@ const AdvancedChat = () => {
     setInput('');
 
     try {
-      console.log('Sending advanced chat request...');
+      console.log('Sending chat request...');
       const response = await fetch('/api/chat/advanced', {
         method: 'POST',
         headers: {
@@ -83,10 +183,17 @@ const AdvancedChat = () => {
       }
 
       const data = await response.json();
-      console.log('Received advanced response:', data);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+      console.log('Received response:', data);
+      const assistantMessage = { role: 'assistant', content: data.message };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Save chat history to Firestore
+      if (currentUser) {
+        saveMessageToFirestore(userMessage, assistantMessage);
+      }
+      
     } catch (error) {
-      console.error('Error in advanced chat:', error);
+      console.error('Error in chat:', error);
       setError(error.message || 'An unexpected error occurred');
       setMessages(prev => [...prev, { 
         role: 'assistant', 
@@ -98,7 +205,7 @@ const AdvancedChat = () => {
   };
 
   return (
-    <div className="w-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Status indicators */}
       {error && (
         <div className="px-4 py-2 bg-red-100 border-l-4 border-red-500 text-red-700 text-sm">
@@ -117,14 +224,36 @@ const AdvancedChat = () => {
           <span className="font-bold">Offline:</span> Chat server is not running
         </div>
       )}
+
+      {/* User authentication notice */}
+      {!currentUser && (
+        <div className="px-4 py-2 bg-blue-100 border-l-4 border-blue-500 text-blue-700 text-sm">
+          <span className="font-bold">Note:</span> Chat history will not be saved since you're not logged in
+        </div>
+      )}
+      
+      {/* Chat header with reset button */}
+      {messages.length > 0 && (
+        <div className="px-4 py-2 bg-indigo-50 border-b border-gray-200 flex justify-between items-center">
+          <div className="text-sm text-indigo-800 font-medium truncate">
+            {chatTitle || 'Current conversation'}
+          </div>
+          <button 
+            onClick={resetConversation}
+            className="text-xs text-indigo-600 hover:text-indigo-800 bg-white px-2 py-1 rounded border border-indigo-200 transition-colors"
+          >
+            New Chat
+          </button>
+        </div>
+      )}
       
       {/* Chat messages area */}
-      <div className="flex-1 p-4 h-[400px] overflow-y-auto bg-gray-50">
+      <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="text-4xl mb-3">✨</div>
-            <p className="text-gray-500">Ask me anything using GPT-4o-mini</p>
-            <p className="text-gray-400 text-sm mt-2">Try: "How can I apply biblical principles to my daily life?"</p>
+            <p className="text-gray-500">Welcome to Advanced Bible Chat</p>
+            <p className="text-gray-400 text-sm mt-2">Try asking about theology, Bible history, or scripture analysis</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -133,30 +262,16 @@ const AdvancedChat = () => {
                 key={index} 
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[80%] px-4 py-3 rounded-lg 
-                  ${msg.role === 'user' 
-                    ? 'bg-indigo-600 text-white rounded-br-none' 
-                    : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}
+                <div
+                  className={`max-w-[80%] px-4 py-3 rounded-lg 
+                    ${msg.role === 'user' 
+                      ? 'bg-indigo-600 text-white rounded-br-none' 
+                      : 'bg-blue-100 text-gray-800 rounded-bl-none'}`}
                 >
                   {msg.role === 'assistant' ? (
-                    <div className="bg-blue-100 p-3 rounded-lg mb-2">
+                    <div className="markdown-content">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
-                        components={{
-                          h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
-                          h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
-                          h3: ({node, ...props}) => <h3 className="text-md font-bold mb-1" {...props} />,
-                          p: ({node, ...props}) => <p className="mb-2" {...props} />,
-                          ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2" {...props} />,
-                          ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2" {...props} />,
-                          li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                          a: ({node, ...props}) => <a className="text-blue-600 hover:underline" {...props} />,
-                          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2" {...props} />,
-                          code: ({node, inline, ...props}) => 
-                            inline 
-                              ? <code className="bg-gray-100 text-sm rounded px-1 py-0.5" {...props} />
-                              : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>
-                        }}
                       >
                         {msg.content}
                       </ReactMarkdown>
@@ -169,11 +284,11 @@ const AdvancedChat = () => {
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-gray-200 text-gray-500 rounded-lg px-4 py-3 rounded-bl-none max-w-[80%]">
+                <div className="bg-blue-100 text-gray-500 rounded-lg px-4 py-3 rounded-bl-none max-w-[80%]">
                   <div className="flex space-x-2">
-                    <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce"></div>
-                    <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce delay-75"></div>
-                    <div className="h-2 w-2 bg-gray-500 rounded-full animate-bounce delay-150"></div>
+                    <div className="h-2 w-2 bg-indigo-500 rounded-full animate-bounce"></div>
+                    <div className="h-2 w-2 bg-indigo-500 rounded-full animate-bounce delay-75"></div>
+                    <div className="h-2 w-2 bg-indigo-500 rounded-full animate-bounce delay-150"></div>
                   </div>
                 </div>
               </div>
@@ -191,7 +306,7 @@ const AdvancedChat = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             className="flex-grow px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            placeholder="Ask your Bible question..."
+            placeholder="Ask a more complex Bible question..."
             disabled={isLoading || serverStatus !== 'online'}
           />
           <button

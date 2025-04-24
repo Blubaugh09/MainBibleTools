@@ -8,6 +8,7 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import VisualParallelsView from './pages/tools/VisualParallelsView';
 import TimelineView from './pages/tools/TimelineView';
+import MapsView from './pages/tools/MapsView';
 
 const App = () => {
   return (
@@ -38,6 +39,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <TimelineView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/maps" 
+            element={
+              <PrivateRoute>
+                <MapsView />
               </PrivateRoute>
             } 
           />

@@ -36,7 +36,7 @@ const BibleCommentaryView = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">Bible Commentary Tool</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Bible Commentary Tool 3</h1>
           </div>
           <button 
             onClick={handleLogout}
@@ -52,7 +52,7 @@ const BibleCommentaryView = () => {
         
         <div className="bg-white shadow rounded-lg p-6">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Bible Commentary</h2>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Bible Commentary 6</h2>
             <p className="text-gray-600">
               Get in-depth commentary on any chapter of the Bible. Select a book and chapter to explore 
               historical context, theological insights, and practical applications.
