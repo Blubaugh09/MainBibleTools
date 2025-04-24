@@ -139,41 +139,54 @@ const VisualParallels = () => {
       const imagePath = `mainBibleTools/visualParallels/${filename}.jpg`;
       const storageRef = ref(storage, imagePath);
       
-      // Fetch the image from the URL
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
+      console.log('Attempting to save image:', imageUrl);
       
-      // Convert blob to base64 string for upload
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          try {
-            // Upload the image to Firebase Storage
-            const base64String = reader.result.split(',')[1];
-            await uploadString(storageRef, base64String, 'base64', {
-              contentType: 'image/jpeg'
-            });
-            
-            // Get the download URL
-            const downloadUrl = await getDownloadURL(storageRef);
-            console.log('Image saved to Firebase Storage:', imagePath);
-            resolve(downloadUrl);
-          } catch (error) {
-            console.error('Error uploading image:', error);
-            reject(error);
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      // For DALL-E images, we'll directly use the URL without fetch
+      // This approach works because the image is already in our state
+      // and we don't need to download it separately
+      
+      // Extract image data from URL or use a proxy if needed
+      if (imageUrl.startsWith('data:')) {
+        // It's already a data URL, use it directly
+        const base64Content = imageUrl.split(',')[1];
+        await uploadString(storageRef, base64Content, 'base64', {
+          contentType: 'image/jpeg'
+        });
+      } else {
+        // For URLs, we'll use the server as a proxy to avoid CORS issues
+        const response = await fetch('/api/proxy-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to proxy image: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Upload the base64 data returned from our proxy
+        await uploadString(storageRef, data.imageData, 'base64', {
+          contentType: 'image/jpeg'
+        });
+      }
+      
+      // Get the download URL
+      const downloadUrl = await getDownloadURL(storageRef);
+      console.log('Image saved to Firebase Storage:', imagePath);
+      return downloadUrl;
     } catch (error) {
       console.error('Error saving image to storage:', error);
+      // Return null but don't fail the whole process
       return null;
     }
   };
 
   // Save results to Firestore
-  const saveParallelToFirestore = async (data, query, imageData = null) => {
+  const saveParallelToFirestore = async (data, query, imageData = null, imageFormat = null) => {
     try {
       if (!currentUser) {
         console.log('User not logged in, cannot save parallel');
@@ -191,6 +204,7 @@ const VisualParallels = () => {
           parallelData: data,
           generatedImage: imageData,
           storedImageUrl: storedImageUrl,
+          imageFormat: imageFormat,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -212,6 +226,9 @@ const VisualParallels = () => {
           // Only add image data if it exists
           if (imageData) {
             updateData.generatedImage = imageData;
+            if (imageFormat) {
+              updateData.imageFormat = imageFormat;
+            }
           }
           
           // Add stored image URL if it exists
@@ -233,6 +250,7 @@ const VisualParallels = () => {
             parallelData: data,
             generatedImage: imageData,
             storedImageUrl: storedImageUrl,
+            imageFormat: imageFormat,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
@@ -271,15 +289,16 @@ const VisualParallels = () => {
       }
       
       const data = await response.json();
-      console.log('Image generated successfully');
+      console.log('Image generated successfully:', data.format);
       
-      // Set the generated image URL
+      // Set the generated image
       setGeneratedImage(data.image);
       setImagePrompt(data.prompt);
       
       // If user is logged in, save the image to Firebase Storage
       if (currentUser) {
         try {
+          console.log('Attempting to save image to Firebase Storage');
           // Save the image to Firebase Storage
           const imageUrl = await saveImageToStorage(data.image, queryInput);
           
@@ -293,6 +312,7 @@ const VisualParallels = () => {
               await updateDoc(parallelRef, {
                 generatedImage: data.image,
                 storedImageUrl: imageUrl,
+                imageFormat: data.format || 'unknown',
                 updatedAt: serverTimestamp()
               });
               console.log('Updated Firestore with image URL');
@@ -306,7 +326,7 @@ const VisualParallels = () => {
       
       // Update Firestore with the image even if storage failed
       if (currentUser && currentParallelId) {
-        saveParallelToFirestore(parallelData, queryInput, data.image);
+        saveParallelToFirestore(parallelData, queryInput, data.image, data.format);
       }
       
     } catch (error) {

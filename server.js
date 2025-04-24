@@ -115,24 +115,52 @@ app.post('/api/tools/generate-parallel-image', async (req, res) => {
     const prompt = constructImagePrompt(parallelData);
     console.log('Generated image prompt:', prompt);
     
-    // Call OpenAI to generate the image
-    const result = await openai.images.generate({
-      model: "dall-e-3",
-      prompt: prompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "standard"
-    });
-    
-    // Send back the image URL
-    if (result.data && result.data[0] && result.data[0].url) {
-      console.log('Image generated successfully');
-      res.json({
-        image: result.data[0].url,
-        prompt: prompt
+    try {
+      // Try to generate an image with URL (DALL-E 3)
+      const result = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: prompt,
+        n: 1,
+        size: "1024x1024",
+        quality: "standard"
       });
-    } else {
-      throw new Error('Image generation failed');
+      
+      // If we have a URL, return it
+      if (result.data && result.data[0] && result.data[0].url) {
+        console.log('Image generated successfully with URL');
+        res.json({
+          image: result.data[0].url,
+          prompt: prompt,
+          format: 'url'
+        });
+      } else {
+        throw new Error('Image generation failed - no URL returned');
+      }
+    } catch (dallE3Error) {
+      // If DALL-E 3 fails, fallback to DALL-E 2 with b64_json
+      console.log('Falling back to DALL-E 2 with base64:', dallE3Error.message);
+      
+      // Try with DALL-E 2 and b64_json
+      const fallbackResult = await openai.images.generate({
+        model: "dall-e-2",
+        prompt: prompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      });
+      
+      if (fallbackResult.data && fallbackResult.data[0] && fallbackResult.data[0].b64_json) {
+        console.log('Image generated successfully with base64');
+        // Return as a complete data URL
+        const dataUrl = `data:image/png;base64,${fallbackResult.data[0].b64_json}`;
+        res.json({
+          image: dataUrl,
+          prompt: prompt,
+          format: 'dataUrl'
+        });
+      } else {
+        throw new Error('Both image generation methods failed');
+      }
     }
   } catch (error) {
     console.error('Image generation error:', error);
@@ -248,6 +276,44 @@ app.post('/api/tools/visual-parallels', async (req, res) => {
   } catch (error) {
     console.error('Error in visual parallels endpoint:', error);
     res.status(500).json({ message: 'An error occurred while generating the visual parallel' });
+  }
+});
+
+// Image proxy endpoint to avoid CORS issues
+app.post('/api/proxy-image', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'Image URL is required' });
+    }
+    
+    console.log('Proxying image from:', imageUrl);
+    
+    // Fetch the image
+    const imageResponse = await fetch(imageUrl);
+    
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+    }
+    
+    // Convert to buffer
+    const imageBuffer = await imageResponse.arrayBuffer();
+    
+    // Convert to base64
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
+    
+    // Return the base64 data
+    res.json({ 
+      imageData: base64Image,
+      contentType: imageResponse.headers.get('content-type') || 'image/jpeg'
+    });
+  } catch (error) {
+    console.error('Image proxy error:', error);
+    res.status(500).json({ 
+      message: 'Failed to proxy image',
+      error: error.message
+    });
   }
 });
 
