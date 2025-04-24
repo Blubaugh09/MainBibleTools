@@ -803,6 +803,126 @@ app.post('/api/tools/edit-biblical-image', async (req, res) => {
   }
 });
 
+// Character Study Tool Endpoint
+app.post('/api/tools/character-study', async (req, res) => {
+  try {
+    console.log('Character Study request received');
+    const { query } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Query is required' });
+    }
+    
+    console.log(`Generating character study for: ${query}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Bible scholar with expertise in biblical characters and their stories. 
+        Your task is to provide comprehensive information about biblical characters based on the user's query.
+        
+        The user may provide a specific character name or a more general query about a biblical figure.
+        You should interpret the query and respond with detailed information about the most relevant biblical character.
+        
+        Respond with a JSON object in the following format:
+        
+        {
+          "character": {
+            "name": "Full name of the character",
+            "alternateNames": ["Any alternate names or titles"],
+            "shortDescription": "One sentence summary of who this character is",
+            "testament": "Old or New Testament",
+            "timePeriod": "Approximate time period (e.g., '~1000 BC' or 'First Century AD')"
+          },
+          "biography": {
+            "summary": "Brief summary of the character's life and significance",
+            "background": "Background information about the character",
+            "keyEvents": [
+              {
+                "title": "Name of event",
+                "description": "Description of the event",
+                "reference": "Bible reference"
+              }
+            ]
+          },
+          "relationships": [
+            {
+              "name": "Related character name",
+              "relationship": "Type of relationship (e.g., father, disciple, enemy)",
+              "description": "Brief description of their relationship",
+              "reference": "Bible reference"
+            }
+          ],
+          "verses": [
+            {
+              "reference": "Bible reference",
+              "text": "Verse text",
+              "significance": "Why this verse is significant for this character"
+            }
+          ],
+          "attributes": {
+            "qualities": ["Positive character qualities"],
+            "flaws": ["Character flaws or weaknesses"],
+            "roles": ["Roles or positions held"]
+          },
+          "legacy": {
+            "impact": "The character's lasting impact",
+            "lessons": ["Key lessons from this character's life"],
+            "inOtherTexts": "Mentions in non-biblical historical sources (if applicable)"
+          },
+          "visualElements": {
+            "symbols": ["Symbols associated with this character"],
+            "settings": ["Key locations associated with this character"],
+            "artifacts": ["Objects or items associated with this character"]
+          }
+        }
+        
+        Ensure that:
+        1. All fields contain historically accurate information based on biblical accounts
+        2. Each event or claim is supported by at least one scripture reference
+        3. The information is educational and respects diverse interpretations
+        4. Passages that have different interpretations are presented neutrally
+        
+        If the user's query is ambiguous, choose the most prominent biblical character that matches.`
+      },
+      {
+        role: 'user',
+        content: query
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 2500,
+      temperature: 0.7,
+    });
+    
+    console.log('Response received from OpenAI for Character Study');
+    
+    try {
+      const characterData = JSON.parse(response.choices[0].message.content);
+      res.json(characterData);
+    } catch (parseError) {
+      console.error('Failed to parse character data as JSON:', parseError);
+      // If parsing fails, return the raw content
+      res.status(500).json({ 
+        message: 'Failed to parse character data from OpenAI response',
+        rawContent: response.choices[0].message.content
+      });
+    }
+  } catch (error) {
+    console.error('Character study generation error:', error);
+    res.status(500).json({
+      message: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {

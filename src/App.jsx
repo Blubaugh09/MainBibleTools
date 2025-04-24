@@ -10,6 +10,7 @@ import VisualParallelsView from './pages/tools/VisualParallelsView';
 import TimelineView from './pages/tools/TimelineView';
 import MapsView from './pages/tools/MapsView';
 import ImagesView from './pages/tools/ImagesView';
+import CharacterStudyView from './pages/tools/CharacterStudyView';
 
 const App = () => {
   return (
@@ -56,6 +57,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <ImagesView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/character-study" 
+            element={
+              <PrivateRoute>
+                <CharacterStudyView />
               </PrivateRoute>
             } 
           />

@@ -7,6 +7,7 @@ import VisualParallels from '../components/tools/VisualParallels';
 import Timeline from '../components/tools/Timeline';
 import Maps from '../components/tools/Maps';
 import Images from '../components/tools/Images';
+import CharacterStudy from '../components/tools/CharacterStudy';
 import AdvancedChat from '../components/AdvancedChat';
 
 const Dashboard = () => {
@@ -50,18 +51,25 @@ const Dashboard = () => {
       color: 'purple'
     },
     {
+      id: 'character-study',
+      name: 'Character Study',
+      description: 'Study biblical characters, their stories, relationships, and legacy',
+      icon: '👤',
+      color: 'teal'
+    },
+    {
       id: 'visual-parallels',
       name: 'Visual Parallels',
       description: 'Explore connections between Old and New Testament themes and symbols',
       icon: '🔄',
-      color: 'teal'
+      color: 'green'
     },
     {
       id: 'timeline',
       name: 'Biblical Timeline',
       description: 'Generate visual timelines of biblical events, characters, and periods',
       icon: '📅',
-      color: 'green'
+      color: 'amber'
     },
     {
       id: 'maps',
@@ -89,6 +97,8 @@ const Dashboard = () => {
         return <BibleCommentary />;
       case 'verse-analyzer':
         return <VerseAnalyzer />;
+      case 'character-study':
+        return <CharacterStudy />;
       case 'visual-parallels':
         return <VisualParallels />;
       case 'timeline':
