@@ -418,6 +418,51 @@ const Images = () => {
     setCurrentImageId(image.id);
   };
 
+  // Add a helper function to handle image downloads
+  const handleDownloadImage = (imageUrl, prompt) => {
+    // Create a safe filename from the prompt
+    const filename = createSafeFilename(prompt || 'biblical-image') + '.png';
+    
+    // For URLs from DALL-E, we need to fetch them first
+    if (imageUrl.startsWith('http')) {
+      // Show a temporary loading state
+      setIsLoading(true);
+      
+      // Use our proxy to get the image data
+      fetch('/api/proxy-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl })
+      })
+      .then(response => response.json())
+      .then(data => {
+        // Create a link with the data URL and trigger a download
+        const link = document.createElement('a');
+        link.href = `data:${data.contentType};base64,${data.imageData}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error('Error downloading image:', error);
+        setError('Failed to download image');
+        setIsLoading(false);
+      });
+    } else if (imageUrl.startsWith('data:')) {
+      // For data URLs, we can download directly
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   return (
     <div className="w-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
       {/* Status indicators */}
@@ -696,6 +741,19 @@ const Images = () => {
                     alt={`Biblical image based on: ${imagePrompt}`} 
                     className="mx-auto rounded-lg shadow-lg"
                   />
+                  
+                  {/* Download button for generated image */}
+                  <button
+                    onClick={() => handleDownloadImage(generatedImage, imagePrompt)}
+                    className="absolute bottom-2 left-2 bg-purple-600 text-white px-3 py-1 rounded-md shadow hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 text-sm flex items-center"
+                    title="Download image"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </button>
+                  
                   <div className="mt-4">
                     <h3 className="text-lg font-medium text-gray-700">Prompt Used:</h3>
                     <p className="text-gray-600 italic">"{imagePrompt}"</p>
@@ -713,6 +771,19 @@ const Images = () => {
                     alt={`Edited biblical image based on: ${editPrompt}`} 
                     className="mx-auto rounded-lg shadow-lg"
                   />
+                  
+                  {/* Download button for edited image */}
+                  <button
+                    onClick={() => handleDownloadImage(editedImage, `Edited: ${editPrompt}`)}
+                    className="absolute bottom-2 left-2 bg-purple-600 text-white px-3 py-1 rounded-md shadow hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 text-sm flex items-center"
+                    title="Download image"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download
+                  </button>
+                  
                   <div className="mt-4">
                     <h3 className="text-lg font-medium text-gray-700">Prompt Used:</h3>
                     <p className="text-gray-600 italic">"{editPrompt}"</p>
