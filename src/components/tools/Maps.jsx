@@ -51,7 +51,7 @@ const Maps = () => {
           console.log('Server health check for Maps:', response.data);
           setServerStatus('online');
           
-          if (!response.data.openAiKeyConfigured) {
+          if (!response.data.env.apiKeySet) {
             setError('The OpenAI API key is not configured. Please check the server settings.');
           }
         } else {
