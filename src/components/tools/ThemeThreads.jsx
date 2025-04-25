@@ -4,203 +4,298 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { auth, db } from '../../firebase/config';
 import { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
+import { useAuth } from '../../contexts/AuthContext';
 
 const ThemeThreads = () => {
   const [themeQuery, setThemeQuery] = useState('');
-  const [themeResults, setThemeResults] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [themeAnalysis, setThemeAnalysis] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [serverStatus, setServerStatus] = useState('checking');
   const [savedThemes, setSavedThemes] = useState([]);
-  const [selectedTheme, setSelectedTheme] = useState(null);
-  const resultsRef = useRef(null);
-  const user = auth.currentUser;
+  const resultRef = useRef(null);
+  const { currentUser } = useAuth();
 
-  // Check server health when component mounts
   useEffect(() => {
     const checkServerHealth = async () => {
       try {
-        const response = await axios.get('/api/health');
-        if (response.data.status === 'ok') {
+        console.log('Checking server health for ThemeThreads component');
+        const response = await fetch('/api/health');
+        if (response.ok) {
+          console.log('Server health check passed');
           setServerStatus('online');
-          if (response.data.openaiApiKey === false) {
-            setError('OpenAI API key is not configured on the server. Please set up your API key.');
-          } else {
-            setError('');
+          if (currentUser) {
+            fetchSavedThemes();
           }
         } else {
+          console.error('Server health check failed:', response.status);
           setServerStatus('offline');
-          setError('Server is online but reporting issues.');
+          setError('Server is currently unavailable. Please try again later.');
         }
-      } catch (err) {
+      } catch (error) {
+        console.error('Server health check error:', error);
         setServerStatus('offline');
-        setError('Could not connect to server. Please check if the server is running.');
+        setError('Cannot connect to server. Please check your internet connection.');
       }
     };
 
     checkServerHealth();
-    fetchSavedThemes();
-  }, []);
+  }, [currentUser]);
 
-  // Fetch saved themes from Firestore
   const fetchSavedThemes = async () => {
-    if (!user) return;
+    if (!currentUser) {
+      console.log('No user logged in, skipping saved themes fetch');
+      return;
+    }
     
     try {
+      console.log('Fetching saved themes for user:', currentUser.uid);
       const themesQuery = query(
-        collection(db, 'users', user.uid, 'savedThemes'),
-        orderBy('createdAt', 'desc')
+        collection(db, 'themeThreads'),
+        where('userId', '==', currentUser.uid)
       );
       
-      const themesSnapshot = await getDocs(themesQuery);
-      const themesList = themesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const querySnapshot = await getDocs(themesQuery);
+      const themes = [];
       
-      setSavedThemes(themesList);
-    } catch (err) {
-      console.error('Error fetching saved themes:', err);
+      querySnapshot.forEach((doc) => {
+        themes.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      console.log(`Found ${themes.length} saved themes`);
+      setSavedThemes(themes);
+    } catch (error) {
+      console.error('Error fetching saved themes:', error);
+      setError('Failed to load your saved themes.');
     }
   };
 
-  // Save theme analysis to Firestore
-  const saveTheme = async () => {
-    if (!user) {
-      setError('You must be logged in to save themes');
-      return;
-    }
-
-    if (!themeResults) {
-      setError('No theme analysis to save');
-      return;
-    }
-
-    try {
-      const themeData = {
-        query: themeQuery,
-        results: themeResults,
-        createdAt: serverTimestamp()
-      };
-
-      await addDoc(
-        collection(db, 'users', user.uid, 'savedThemes'),
-        themeData
-      );
-
-      setError('');
-      fetchSavedThemes();
-    } catch (err) {
-      console.error('Error saving theme:', err);
-      setError('Failed to save theme analysis');
-    }
-  };
-
-  // Handle form submission
-  const handleSubmit = async (e) => {
+  const handleThemeAnalysis = async (e) => {
     e.preventDefault();
     
-    if (serverStatus !== 'online') {
-      setError('Server is offline. Please try again later.');
-      return;
-    }
+    // Reset any previous errors
+    setError(null);
     
-    // Improved validation with better error messages
+    // Basic client-side validation
     if (!themeQuery.trim()) {
       setError('Please enter a biblical theme to analyze');
       return;
     }
     
-    // Check if query is too long for the model
     if (themeQuery.length > 500) {
-      setError('Your query is too long. Please limit to 500 characters.');
+      setError('Theme query exceeds maximum length of 500 characters');
       return;
     }
     
-    setIsLoading(true);
-    setError('');
-    setThemeResults(null);
-    setSelectedTheme(null);
+    setIsGenerating(true);
     
     try {
-      const response = await axios.post('/api/tools/theme-threads', {
-        prompt: themeQuery.trim()
+      console.log(`ThemeThreads: Sending request to server with prompt: "${themeQuery}"`);
+      const payload = { prompt: themeQuery.trim() };
+      console.log('Request payload:', payload);
+      
+      const response = await fetch('/api/tools/theme-threads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
       
-      // Verify response data structure
-      if (!response.data || typeof response.data !== 'object') {
-        throw new Error('Invalid response format received from server');
+      console.log('ThemeThreads: Received server response', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get('content-type')
+      });
+      
+      // Handle specific HTTP status codes
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('ThemeThreads API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        
+        let errorMessage = 'An error occurred while analyzing the theme';
+        
+        try {
+          // Try to parse the error response as JSON
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+          console.error('Parsed error details:', errorJson);
+        } catch (parseError) {
+          console.error('Error response was not valid JSON:', parseError, 'Raw response:', errorText);
+        }
+        
+        // Provide specific messages for common status codes
+        switch (response.status) {
+          case 400:
+            setError(`Bad request: ${errorMessage}`);
+            console.error('400 Bad Request Details:', errorText);
+            break;
+          case 401:
+            setError('Authentication required. Please log in again.');
+            break;
+          case 403:
+            setError('You do not have permission to use this feature.');
+            break;
+          case 404:
+            setError('Theme analysis service not found.');
+            break;
+          case 429:
+            setError('Too many requests. Please try again later.');
+            break;
+          case 500:
+            setError(`Server error: ${errorMessage}`);
+            break;
+          default:
+            setError(`Error (${response.status}): ${errorMessage}`);
+        }
+        
+        setIsGenerating(false);
+        return;
       }
       
-      setThemeResults(response.data);
+      // Handle successful response
+      console.log('ThemeThreads: Reading response data...');
+      const responseData = await response.json();
+      console.log('ThemeThreads: Theme analysis response received:', responseData);
+      
+      // Validate response has the expected structure
+      if (!responseData || typeof responseData !== 'object') {
+        console.error('ThemeThreads: Invalid response format', responseData);
+        setError('Received invalid response format from server');
+        setIsGenerating(false);
+        return;
+      }
+      
+      // Set the theme analysis results
+      setThemeAnalysis(responseData);
+      
+      // Auto-save if user is authenticated
+      if (auth.currentUser) {
+        saveThemeAnalysis(responseData);
+      }
       
       // Scroll to results
-      if (resultsRef.current) {
-        resultsRef.current.scrollIntoView({ behavior: 'smooth' });
+      if (resultRef.current) {
+        resultRef.current.scrollIntoView({ behavior: 'smooth' });
       }
-    } catch (err) {
-      console.error('Theme analysis error:', err);
-      
-      // Enhanced error handling with more specific messages
-      if (err.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        if (err.response.status === 400) {
-          setError('Invalid request: ' + (err.response.data.error || 'Please check your input and try again'));
-        } else if (err.response.status === 429) {
-          setError('Too many requests: Please wait a moment and try again');
-        } else if (err.response.status === 500) {
-          setError('Server error: ' + (err.response.data.error || 'The theme analysis could not be completed'));
-        } else {
-          setError(err.response.data.error || 'Failed to process theme analysis request');
-        }
-      } else if (err.request) {
-        // The request was made but no response was received
-        setError('No response from server. Please check your connection and try again.');
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        setError('Error preparing request: ' + err.message);
-      }
+    } catch (error) {
+      console.error('ThemeThreads: Error during theme analysis:', error);
+      setError(`Failed to analyze theme: ${error.message}`);
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  // View a saved theme
-  const viewSavedTheme = (theme) => {
-    setSelectedTheme(theme);
-    setThemeResults(theme.results);
-    setThemeQuery(theme.query);
-    
-    // Scroll to results
-    if (resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth' });
+  const saveThemeAnalysis = async (analysisData) => {
+    if (!currentUser) {
+      setError('You must be logged in to save themes.');
+      return;
+    }
+
+    if (!analysisData) {
+      analysisData = themeAnalysis;
+    }
+
+    if (!analysisData) {
+      setError('No theme analysis to save.');
+      return;
+    }
+
+    try {
+      console.log('Saving theme analysis to Firestore:', analysisData);
+      
+      // Check if this theme already exists for this user
+      const existingTheme = await findExistingTheme(analysisData.title);
+      
+      if (existingTheme) {
+        setError('You have already saved this theme analysis.');
+        return;
+      }
+      
+      // Map the new response format to Firestore document
+      await addDoc(collection(db, 'themeThreads'), {
+        userId: currentUser.uid,
+        theme: analysisData.title, // Using title from new format
+        summary: analysisData.summary,
+        keyVerses: analysisData.keyVerses || [],
+        theologicalSignificance: analysisData.theologicalSignificance || '',
+        connections: analysisData.connections || [],
+        applications: analysisData.applications || [],
+        createdAt: serverTimestamp(),
+        query: themeQuery
+      });
+      
+      console.log('Theme analysis saved successfully');
+      fetchSavedThemes();
+      setError('');
+    } catch (error) {
+      console.error('Error saving theme analysis:', error);
+      setError('Failed to save theme analysis: ' + error.message);
     }
   };
 
-  // Delete a saved theme
-  const deleteTheme = async (id) => {
-    if (!user) return;
+  const findExistingTheme = async (theme) => {
+    if (!currentUser) return null;
     
     try {
-      await deleteDoc(doc(db, 'users', user.uid, 'savedThemes', id));
-      fetchSavedThemes();
+      const themesQuery = query(
+        collection(db, 'themeThreads'),
+        where('userId', '==', currentUser.uid),
+        where('theme', '==', theme)
+      );
       
-      if (selectedTheme && selectedTheme.id === id) {
-        setSelectedTheme(null);
-      }
-    } catch (err) {
-      console.error('Error deleting theme:', err);
-      setError('Failed to delete theme');
+      const querySnapshot = await getDocs(themesQuery);
+      return !querySnapshot.empty;
+    } catch (error) {
+      console.error('Error checking for existing theme:', error);
+      return null;
     }
   };
 
-  // Reset the form
-  const handleReset = () => {
-    setThemeQuery('');
-    setThemeResults(null);
-    setSelectedTheme(null);
-    setError('');
+  const deleteTheme = async (themeId) => {
+    if (!currentUser) {
+      setError('You must be logged in to delete themes.');
+      return;
+    }
+
+    try {
+      console.log(`Deleting theme with ID: ${themeId}`);
+      await deleteDoc(doc(db, 'themeThreads', themeId));
+      console.log('Theme deleted successfully');
+      fetchSavedThemes();
+      setError('');
+    } catch (error) {
+      console.error('Error deleting theme:', error);
+      setError('Failed to delete theme.');
+    }
+  };
+
+  const loadTheme = (theme) => {
+    console.log('Loading saved theme:', theme);
+    
+    // Convert the saved theme to match the expected response format
+    setThemeAnalysis({
+      title: theme.theme,
+      summary: theme.summary,
+      keyVerses: theme.keyVerses || [],
+      theologicalSignificance: theme.theologicalSignificance || '',
+      connections: theme.connections || [],
+      applications: theme.applications || []
+    });
+    
+    setThemeQuery(theme.query || theme.theme);
+    
+    // Scroll to results
+    if (resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   return (
@@ -226,7 +321,7 @@ const ThemeThreads = () => {
         </div>
         
         {/* Input form */}
-        <form onSubmit={handleSubmit} className="mb-8">
+        <form onSubmit={handleThemeAnalysis} className="mb-8">
           <div className="mb-4">
             <label htmlFor="theme-query" className="block text-gray-700 text-sm font-bold mb-2">
               Enter Biblical Theme or Concept
@@ -238,7 +333,7 @@ const ThemeThreads = () => {
               onChange={(e) => setThemeQuery(e.target.value)}
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               placeholder="e.g., Redemption, Covenant, Grace, Faith, etc."
-              disabled={isLoading}
+              disabled={isGenerating}
               maxLength={500}
             />
             <p className="text-sm text-gray-500 mt-1">
@@ -252,14 +347,14 @@ const ThemeThreads = () => {
           <div className="flex space-x-2">
             <button
               type="submit"
-              disabled={isLoading || serverStatus !== 'online'}
+              disabled={isGenerating || serverStatus !== 'online'}
               className={`px-4 py-2 rounded font-bold text-white ${
-                isLoading || serverStatus !== 'online'
+                isGenerating || serverStatus !== 'online'
                   ? 'bg-indigo-300 cursor-not-allowed'
                   : 'bg-indigo-600 hover:bg-indigo-700'
               }`}
             >
-              {isLoading ? (
+              {isGenerating ? (
                 <>
                   <span className="inline-block animate-spin mr-2">↻</span>
                   Analyzing...
@@ -269,21 +364,13 @@ const ThemeThreads = () => {
               )}
             </button>
             
-            <button
-              type="button"
-              onClick={handleReset}
-              className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded font-bold"
-            >
-              Reset
-            </button>
-            
-            {themeResults && (
+            {themeAnalysis && (
               <button
                 type="button"
-                onClick={saveTheme}
-                disabled={!user}
+                onClick={() => saveThemeAnalysis(themeAnalysis)}
+                disabled={!currentUser}
                 className={`px-4 py-2 rounded font-bold text-white ${
-                  !user ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  !currentUser ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
                 Save Analysis
@@ -292,56 +379,55 @@ const ThemeThreads = () => {
           </div>
         </form>
         
-        {/* Results section with improved rendering for potential null values */}
-        {themeResults && (
-          <div ref={resultsRef} className="theme-analysis border-t pt-6">
+        {/* Results section with improved rendering for the new response format */}
+        {themeAnalysis && (
+          <div ref={resultRef} className="theme-analysis border-t pt-6">
             <h3 className="text-xl font-bold mb-4 text-indigo-700">
-              {selectedTheme ? `Saved Analysis: ${selectedTheme.query}` : `Analysis: ${themeQuery}`}
+              Analysis: {themeAnalysis.title || themeQuery}
             </h3>
             
             <div className="mb-6">
-              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Introduction</h4>
+              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Summary</h4>
               <div className="text-gray-700">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {themeResults.introduction || 'No introduction provided'}
+                  {themeAnalysis.summary || 'No summary provided'}
                 </ReactMarkdown>
               </div>
             </div>
             
             <div className="mb-6">
-              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Key Occurrences</h4>
-              {themeResults.occurrences && themeResults.occurrences.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {themeResults.occurrences.map((occurrence, index) => (
+              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Key Verses</h4>
+              {themeAnalysis.keyVerses && themeAnalysis.keyVerses.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {themeAnalysis.keyVerses.map((verse, index) => (
                     <div key={index} className="bg-blue-50 p-3 rounded border border-blue-100">
-                      <p className="font-bold text-blue-700">{occurrence.reference || 'Unknown reference'}</p>
-                      <p className="text-sm text-gray-700">{occurrence.description || 'No description provided'}</p>
+                      <p className="font-bold text-blue-700">{verse.reference || 'Unknown reference'}</p>
+                      <p className="text-sm text-gray-700">{verse.text || 'No text provided'}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">No key occurrences found</p>
+                <p className="text-gray-500">No key verses found</p>
               )}
             </div>
             
             <div className="mb-6">
-              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Thematic Development</h4>
+              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Theological Significance</h4>
               <div className="text-gray-700">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {themeResults.development || 'No thematic development information provided'}
+                  {themeAnalysis.theologicalSignificance || 'No theological significance information provided'}
                 </ReactMarkdown>
               </div>
             </div>
             
             <div className="mb-6">
               <h4 className="text-lg font-semibold text-indigo-600 mb-2">Related Themes</h4>
-              {themeResults.connections && themeResults.connections.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {themeResults.connections.map((connection, index) => (
-                    <div key={index} className="bg-indigo-50 p-3 rounded border border-indigo-100">
-                      <p className="font-bold text-indigo-700">{connection.theme || 'Unknown theme'}</p>
-                      <p className="text-sm text-gray-700">{connection.relationship || 'No relationship description'}</p>
-                    </div>
+              {themeAnalysis.connections && themeAnalysis.connections.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {themeAnalysis.connections.map((connection, index) => (
+                    <span key={index} className="bg-indigo-50 px-3 py-1 rounded text-sm text-indigo-700 border border-indigo-100">
+                      {typeof connection === 'string' ? connection : connection.theme || 'Unknown theme'}
+                    </span>
                   ))}
                 </div>
               ) : (
@@ -350,26 +436,17 @@ const ThemeThreads = () => {
             </div>
             
             <div className="mb-6">
-              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Modern Application</h4>
-              <div className="text-gray-700">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {themeResults.application || 'No application information provided'}
-                </ReactMarkdown>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Additional References</h4>
-              {themeResults.references && themeResults.references.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {themeResults.references.map((reference, index) => (
-                    <span key={index} className="bg-gray-100 px-2 py-1 rounded text-sm text-gray-700">
-                      {reference}
-                    </span>
+              <h4 className="text-lg font-semibold text-indigo-600 mb-2">Practical Applications</h4>
+              {themeAnalysis.applications && themeAnalysis.applications.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-2">
+                  {themeAnalysis.applications.map((application, index) => (
+                    <li key={index} className="text-gray-700">
+                      {typeof application === 'string' ? application : application.description || 'No description'}
+                    </li>
                   ))}
-                </div>
+                </ul>
               ) : (
-                <p className="text-gray-500">No additional references found</p>
+                <p className="text-gray-500">No applications provided</p>
               )}
             </div>
           </div>
@@ -380,7 +457,7 @@ const ThemeThreads = () => {
       <div className="w-full md:w-1/4 bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-bold mb-4 text-indigo-700">Saved Themes</h3>
         
-        {!user ? (
+        {!currentUser ? (
           <p className="text-gray-500 text-sm">Sign in to save and view your theme analyses</p>
         ) : savedThemes.length === 0 ? (
           <p className="text-gray-500 text-sm">No saved themes yet. Analyze and save themes to see them here.</p>
@@ -390,15 +467,15 @@ const ThemeThreads = () => {
               <div 
                 key={theme.id} 
                 className={`border rounded p-3 cursor-pointer hover:bg-indigo-50 ${
-                  selectedTheme && selectedTheme.id === theme.id ? 'bg-indigo-100 border-indigo-300' : ''
+                  themeAnalysis && themeAnalysis.theme === theme.theme ? 'bg-indigo-100 border-indigo-300' : ''
                 }`}
               >
                 <div className="flex justify-between items-start">
                   <h4 
                     className="font-medium text-indigo-700 hover:underline"
-                    onClick={() => viewSavedTheme(theme)}
+                    onClick={() => loadTheme(theme)}
                   >
-                    {theme.query}
+                    {theme.theme}
                   </h4>
                   <button
                     onClick={() => deleteTheme(theme.id)}
