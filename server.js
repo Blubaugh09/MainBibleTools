@@ -1070,6 +1070,70 @@ app.post('/api/tools/personal-study', async (req, res) => {
   }
 });
 
+// Theme Threads Tool Endpoint
+app.post('/api/tools/theme-threads', async (req, res) => {
+  try {
+    console.log('Theme Threads request received');
+    const { prompt } = req.body;
+    
+    if (!openai.apiKey) {
+      return res.status(500).json({ message: 'OpenAI API key is not configured' });
+    }
+    
+    if (!prompt) {
+      return res.status(400).json({ message: 'Prompt is required' });
+    }
+    
+    console.log(`Generating theme threads for: ${prompt}`);
+    
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a biblical theologian and scholar specializing in thematic study of the Scriptures. 
+        Your task is to analyze biblical themes, topics, or questions and provide insightful connections throughout the Bible.
+        
+        For any query about biblical themes, topics, or theological questions, provide a thorough analysis that traces 
+        how this theme or concept develops and connects across Scripture. Your response should be scholarly yet accessible,
+        and should help the user gain a deeper understanding of the biblical teaching on their topic.
+
+        Focus on providing a comprehensive overview that includes:
+        
+        1. Clear biblical references and citations
+        2. Development of the theme across different biblical books and testaments
+        3. Key theological insights and connections
+        4. How different biblical authors approach the theme
+        5. Practical implications or applications where appropriate
+        
+        Format your response using Markdown with clear sections, headers, and lists where appropriate.
+        Be educational, balanced in your theological approach, and focus on helping the user understand 
+        the richness and complexity of biblical teaching on their topic.`
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ];
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      max_tokens: 2500,
+      temperature: 0.7,
+    });
+    
+    console.log('Response received from OpenAI for Theme Threads');
+    
+    res.json({
+      result: response.choices[0].message.content
+    });
+  } catch (error) {
+    console.error('Theme threads generation error:', error);
+    res.status(500).json({
+      error: error.message || 'Something went wrong'
+    });
+  }
+});
+
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {

@@ -12,6 +12,7 @@ import MapsView from './pages/tools/MapsView';
 import ImagesView from './pages/tools/ImagesView';
 import CharacterStudyView from './pages/tools/CharacterStudyView';
 import PersonalStudyView from './pages/tools/PersonalStudyView';
+import ThemeThreadsView from './pages/tools/ThemeThreadsView';
 
 const App = () => {
   return (
@@ -74,6 +75,14 @@ const App = () => {
             element={
               <PrivateRoute>
                 <PersonalStudyView />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/tools/theme-threads" 
+            element={
+              <PrivateRoute>
+                <ThemeThreadsView />
               </PrivateRoute>
             } 
           />
