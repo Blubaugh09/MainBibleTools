@@ -1070,67 +1070,84 @@ app.post('/api/tools/personal-study', async (req, res) => {
   }
 });
 
-// Theme Threads Tool Endpoint
+// Theme Threads API endpoint
 app.post('/api/tools/theme-threads', async (req, res) => {
   try {
-    console.log('Theme Threads request received');
-    const { prompt } = req.body;
+    const { theme } = req.body;
     
+    if (!theme) {
+      return res.status(400).json({ error: 'No theme query provided' });
+    }
+
+    console.log(`Processing theme analysis request: ${theme}`);
+
     if (!openai.apiKey) {
       return res.status(500).json({ message: 'OpenAI API key is not configured' });
     }
+
+    const systemPrompt = `You are a biblical scholar with expertise in thematic analysis across the entire Bible. 
+    Analyze the following biblical theme and provide a comprehensive response that includes:
     
-    if (!prompt) {
-      return res.status(400).json({ message: 'Prompt is required' });
+    1. A brief summary of the theme's significance in Scripture
+    2. A chronological timeline of key events/passages where this theme appears (at least 5-10 key moments)
+    3. Key insights about how this theme develops across Scripture
+    4. Memory aids to help understand and remember this theme
+    5. Key verses that exemplify this theme (with references and text)
+    
+    Format your response as a JSON object with the following structure:
+    {
+      "summary": "Summary text here",
+      "timelineEvents": [
+        {
+          "title": "Short title",
+          "reference": "Book Chapter:Verse",
+          "event": "Brief description",
+          "description": "More detailed explanation"
+        }
+      ],
+      "insights": ["Insight 1", "Insight 2", "Insight 3"],
+      "memoryAids": [
+        {
+          "title": "Mnemonic or pattern name",
+          "description": "Explanation of the memory aid"
+        }
+      ],
+      "keyVerses": [
+        {
+          "reference": "Book Chapter:Verse",
+          "text": "Verse text",
+          "significance": "Why this verse is important for the theme"
+        }
+      ]
     }
     
-    console.log(`Generating theme threads for: ${prompt}`);
-    
-    const messages = [
-      {
-        role: 'system',
-        content: `You are a biblical theologian and scholar specializing in thematic study of the Scriptures. 
-        Your task is to analyze biblical themes, topics, or questions and provide insightful connections throughout the Bible.
-        
-        For any query about biblical themes, topics, or theological questions, provide a thorough analysis that traces 
-        how this theme or concept develops and connects across Scripture. Your response should be scholarly yet accessible,
-        and should help the user gain a deeper understanding of the biblical teaching on their topic.
+    Maintain theological neutrality while being thorough and insightful.`;
 
-        Focus on providing a comprehensive overview that includes:
-        
-        1. Clear biblical references and citations
-        2. Development of the theme across different biblical books and testaments
-        3. Key theological insights and connections
-        4. How different biblical authors approach the theme
-        5. Practical implications or applications where appropriate
-        
-        Format your response using Markdown with clear sections, headers, and lists where appropriate.
-        Be educational, balanced in your theological approach, and focus on helping the user understand 
-        the richness and complexity of biblical teaching on their topic.`
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
-    
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: messages,
-      max_tokens: 2500,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Analyze the biblical theme: ${theme}` }
+      ],
       temperature: 0.7,
+      max_tokens: 2000
     });
+
+    const responseContent = response.choices[0].message.content;
+    let parsedResponse;
     
-    console.log('Response received from OpenAI for Theme Threads');
+    try {
+      parsedResponse = JSON.parse(responseContent);
+    } catch (error) {
+      console.error('Error parsing JSON response from OpenAI:', error);
+      return res.status(500).json({ error: 'Failed to parse theme analysis response' });
+    }
+
+    res.json(parsedResponse);
     
-    res.json({
-      result: response.choices[0].message.content
-    });
   } catch (error) {
-    console.error('Theme threads generation error:', error);
-    res.status(500).json({
-      error: error.message || 'Something went wrong'
-    });
+    console.error('Error in theme threads endpoint:', error);
+    res.status(500).json({ error: 'An error occurred while analyzing the theme' });
   }
 });
 

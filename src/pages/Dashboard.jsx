@@ -10,6 +10,7 @@ import Images from '../components/tools/Images';
 import CharacterStudy from '../components/tools/CharacterStudy';
 import PersonalStudy from '../components/tools/PersonalStudy';
 import AdvancedChat from '../components/AdvancedChat';
+import ThemeThreads from '../components/tools/ThemeThreads';
 
 const Dashboard = () => {
   const [error, setError] = useState('');
@@ -66,6 +67,13 @@ const Dashboard = () => {
       color: 'pink'
     },
     {
+      id: 'theme-threads',
+      name: 'Theme Threads',
+      description: 'Explore how biblical themes develop and connect across Scripture',
+      icon: '🧵',
+      color: 'orange'
+    },
+    {
       id: 'visual-parallels',
       name: 'Visual Parallels',
       description: 'Explore connections between Old and New Testament themes and symbols',
@@ -109,6 +117,8 @@ const Dashboard = () => {
         return <CharacterStudy />;
       case 'personal-study':
         return <PersonalStudy />;
+      case 'theme-threads':
+        return <ThemeThreads />;
       case 'visual-parallels':
         return <VisualParallels />;
       case 'timeline':
@@ -184,6 +194,10 @@ const Dashboard = () => {
                   bgClass = "bg-amber-50";
                   textClass = "text-amber-700";
                   activeClass = "bg-amber-100 border-amber-300";
+                } else if (tool.color === 'orange') {
+                  bgClass = "bg-orange-50";
+                  textClass = "text-orange-700";
+                  activeClass = "bg-orange-100 border-orange-300";
                 }
                 
                 return (
