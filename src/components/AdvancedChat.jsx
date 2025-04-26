@@ -3,7 +3,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../firebase/AuthContext';
 import { db } from '../firebase/config';
-import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import axios from 'axios';
+
+// API base URL - use environment variable if available or default to relative path
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 const AdvancedChat = () => {
   const [input, setInput] = useState('');
@@ -21,12 +25,12 @@ const AdvancedChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Check if the server is running when the component mounts
+  // Check server health when component mounts
   useEffect(() => {
     const checkServerHealth = async () => {
       try {
         setServerStatus('checking');
-        const response = await fetch('/api/health');
+        const response = await axios.get(`${API_BASE_URL}/api/health`);
         if (response.ok) {
           const data = await response.json();
           console.log('Server health check:', data);
@@ -47,7 +51,7 @@ const AdvancedChat = () => {
     };
 
     checkServerHealth();
-  }, []);
+  }, [currentUser]);
 
   // Save message to Firestore
   const saveMessageToFirestore = async (userMessage, assistantMessage) => {
@@ -164,14 +168,8 @@ const AdvancedChat = () => {
 
     try {
       console.log('Sending chat request...');
-      const response = await fetch('/api/chat/advanced', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...messages, userMessage],
-        }),
+      const response = await axios.post(`${API_BASE_URL}/api/chat/advanced`, {
+        messages: [...messages, userMessage]
       });
 
       console.log('Response status:', response.status);
