@@ -31,22 +31,18 @@ const AdvancedChat = () => {
       try {
         setServerStatus('checking');
         const response = await axios.get(`${API_BASE_URL}/api/health`);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Server health check:', data);
-          setServerStatus('online');
-          
-          if (!data.env.apiKeySet) {
-            setError('OpenAI API key is not configured on the server');
-          }
-        } else {
-          setServerStatus('offline');
-          setError('Cannot connect to the chat server');
+        
+        // Axios response handling - data is directly available
+        console.log('Server health check:', response.data);
+        setServerStatus('online');
+        
+        if (!response.data.env.apiKeySet) {
+          setError('OpenAI API key is not configured on the server');
         }
       } catch (err) {
         console.error('Server health check failed:', err);
         setServerStatus('offline');
-        setError('Cannot connect to the chat server. Make sure to run "npm run server"');
+        setError('Cannot connect to the chat server. Please verify the server is running.');
       }
     };
 
@@ -172,17 +168,10 @@ const AdvancedChat = () => {
         messages: [...messages, userMessage]
       });
 
-      console.log('Response status:', response.status);
+      console.log('Response received:', response.data);
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error response:', errorData);
-        throw new Error(errorData.message || 'Failed to get response');
-      }
-
-      const data = await response.json();
-      console.log('Received response:', data);
-      const assistantMessage = { role: 'assistant', content: data.message };
+      // With axios, we can directly use response.data
+      const assistantMessage = { role: 'assistant', content: response.data.message };
       setMessages(prev => [...prev, assistantMessage]);
 
       // Save chat history to Firestore
