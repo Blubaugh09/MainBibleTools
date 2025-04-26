@@ -1109,7 +1109,9 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
+// Listen on all interfaces (0.0.0.0) instead of just localhost
+const HOST = '0.0.0.0';
+app.listen(PORT, HOST, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check available at http://localhost:${PORT}/api/health`);
   console.log(`OpenAI API key set: ${!!process.env.OPENAI_API_KEY}`);
