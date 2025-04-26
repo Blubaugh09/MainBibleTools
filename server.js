@@ -449,6 +449,34 @@ app.post('/api/tools/bible-commentary', async (req, res) => {
   }
 });
 
+// server.js
+// ⬇️ replace the old route
+// app.post("/api/tools/theme-threads", async (req, res) => {
+  app.post("/api/tools/theme-thread", async (req, res) => {
+    try {
+      const { theme } = req.body;
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Return a JSON study plan mapping every biblical occurrence of a given theme. Include fields: theme, occurrences:[{ref, book, chapter, verse}], timeline:[{book,start,end,density}], summary, memoryAids",
+          },
+          { role: "user", content: theme },
+        ],
+      });
+  
+      const json = JSON.parse(completion.choices[0].message.content);
+      res.json(json);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to generate theme threads" });
+    }
+  });
+  
+
 // Verse Analyzer Tool Endpoint
 app.post('/api/tools/verse-analyzer', async (req, res) => {
   try {
@@ -1067,134 +1095,6 @@ app.post('/api/tools/personal-study', async (req, res) => {
     res.status(500).json({
       message: error.message || 'Something went wrong'
     });
-  }
-});
-
-// Theme Threads Analysis Endpoint
-app.post('/api/tools/theme-threads', isAuthenticated, async (req, res) => {
-  try {
-    console.log('Theme Threads API called with body:', JSON.stringify(req.body));
-    
-    // Validate OpenAI API key
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('Theme Threads API: Missing OpenAI API key');
-      return res.status(500).json({ error: 'Server configuration error: Missing OpenAI API key' });
-    }
-    
-    // Validate request parameters
-    const { prompt } = req.body;
-    
-    console.log('Theme Threads API: Extracted prompt:', prompt);
-    console.log('Theme Threads API: prompt type:', typeof prompt);
-    
-    if (prompt === undefined) {
-      console.error('Theme Threads API: Missing prompt parameter');
-      return res.status(400).json({ error: 'Missing prompt parameter' });
-    }
-    
-    if (typeof prompt !== 'string') {
-      console.error('Theme Threads API: Invalid prompt type:', typeof prompt);
-      return res.status(400).json({ error: 'Prompt must be a string' });
-    }
-    
-    if (prompt.trim() === '') {
-      console.error('Theme Threads API: Empty prompt provided');
-      return res.status(400).json({ error: 'Prompt cannot be empty' });
-    }
-    
-    if (prompt.length > 500) {
-      console.error(`Theme Threads API: Prompt exceeds maximum length (${prompt.length} > 500)`);
-      return res.status(400).json({ error: 'Prompt exceeds maximum length of 500 characters' });
-    }
-    
-    console.log(`Theme Threads API: Analyzing theme "${prompt}"`);
-    
-    // Create OpenAI API request
-    const apiRequestPayload = {
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are a biblical scholar specializing in thematic analysis. Analyze the biblical theme provided by the user and trace its development through Scripture. Format your response as a structured JSON object with the following fields: 'title' (a concise title for the theme), 'summary' (a brief overview of the theme), 'keyVerses' (an array of objects with 'reference' and 'text' fields), 'theologicalSignificance' (theological importance of the theme), 'connections' (array of related biblical themes), and 'applications' (practical applications of this theme for believers today)."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      response_format: { type: "json_object" }
-    };
-    
-    console.log('Theme Threads API: Sending request to OpenAI');
-    console.log('OpenAI request payload:', JSON.stringify(apiRequestPayload, null, 2));
-    
-    // Call OpenAI API
-    const openaiResponse = await openai.chat.completions.create(apiRequestPayload);
-    
-    console.log('Theme Threads API: Received response from OpenAI');
-    
-    // Extract and validate the JSON response
-    let analysisResult;
-    
-    try {
-      // Parse the JSON string from the response content
-      analysisResult = JSON.parse(openaiResponse.choices[0].message.content);
-      console.log('Theme Threads API: Successfully parsed response content');
-    } catch (parseError) {
-      console.error('Theme Threads API: Error parsing OpenAI response as JSON:', parseError);
-      console.error('Response content:', openaiResponse.choices[0]?.message?.content);
-      return res.status(500).json({ error: 'Error parsing theme analysis response' });
-    }
-    
-    // Validate required fields in the response
-    const requiredFields = ['title', 'summary', 'keyVerses'];
-    const missingFields = requiredFields.filter(field => !analysisResult[field]);
-    
-    if (missingFields.length > 0) {
-      console.error('Theme Threads API: Missing required fields in analysis result:', missingFields);
-      return res.status(500).json({ error: `Missing required fields in response: ${missingFields.join(', ')}` });
-    }
-    
-    // Add default values for optional fields if missing
-    if (!analysisResult.theologicalSignificance) {
-      analysisResult.theologicalSignificance = 'Not provided';
-    }
-    
-    if (!Array.isArray(analysisResult.connections)) {
-      analysisResult.connections = [];
-    }
-    
-    if (!Array.isArray(analysisResult.applications)) {
-      analysisResult.applications = [];
-    }
-    
-    console.log('Theme Threads API: Successfully analyzed theme');
-    
-    // Send the complete analysis result
-    res.json(analysisResult);
-  } catch (error) {
-    console.error('Theme Threads API error:', error);
-    
-    // Handle OpenAI API specific errors
-    if (error.response) {
-      console.error('OpenAI API error response:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      });
-      
-      // Return appropriate error based on OpenAI error status
-      if (error.response.status === 400) {
-        return res.status(400).json({ error: 'Bad request to OpenAI API: ' + (error.response.data.error?.message || 'Invalid input') });
-      } else if (error.response.status === 401) {
-        return res.status(500).json({ error: 'Authentication error with OpenAI API' });
-      } else if (error.response.status === 429) {
-        return res.status(429).json({ error: 'Rate limit exceeded on OpenAI API' });
-      }
-    }
-    
-    res.status(500).json({ error: 'Failed to analyze theme: ' + error.message });
   }
 });
 
