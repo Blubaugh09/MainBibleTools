@@ -268,7 +268,7 @@ const ThemeThread = () => {
     return (
       <ul className="space-y-1 list-disc list-inside">
         {items.map((it, idx) => (
-          <li key={idx}>
+          <li key={idx} className="pl-2">
             {containsVerseReferences(it) ? (
               <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(it) }} />
             ) : (
@@ -389,6 +389,17 @@ const ThemeThread = () => {
                     return <p dangerouslySetInnerHTML={{ __html: processedContent }} />;
                   }
                   return <p {...props} />;
+                },
+                li: ({node, ...props}) => {
+                  const rawContent = node.children
+                    .map(n => n.type === 'text' ? n.value : '')
+                    .join('');
+                  
+                  if (containsVerseReferences(rawContent)) {
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <li dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                  }
+                  return <li {...props} />;
                 }
               }}
             >
@@ -401,7 +412,39 @@ const ThemeThread = () => {
       case "timeline":
         return renderTimeline();
       case "memoryAids":
-        return renderList(threadData.memoryAids);
+        return (
+          <div className="prose max-w-none">
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({node, ...props}) => {
+                  const rawContent = node.children
+                    .map(n => n.type === 'text' ? n.value : '')
+                    .join('');
+                  
+                  if (containsVerseReferences(rawContent)) {
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <p dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                  }
+                  return <p {...props} />;
+                },
+                li: ({node, ...props}) => {
+                  const rawContent = node.children
+                    .map(n => n.type === 'text' ? n.value : '')
+                    .join('');
+                  
+                  if (containsVerseReferences(rawContent)) {
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <li dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                  }
+                  return <li {...props} />;
+                }
+              }}
+            >
+              {threadData.memoryAids.join('\n\n')}
+            </ReactMarkdown>
+          </div>
+        );
       default:
         return null;
     }
