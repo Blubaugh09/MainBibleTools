@@ -21,7 +21,13 @@ const PATTERNS = [
   /\b([1-3]\s[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)\b(?!\s*:)/g,
   
   // Comma-separated verses: John 3:16,18,20-22
-  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)(?:,(\d+))*(?:-(\d+))?\b/g
+  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)(?:,(\d+))*(?:-(\d+))?\b/g,
+  
+  // Verse ranges with hyphens: John 3:16-19, Genesis 1:1-10
+  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)-(\d+)\b/g,
+  
+  // Verse ranges with hyphens for numbered books: 1 John 3:16-19
+  /\b([1-3]\s[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)-(\d+)\b/g
 ];
 
 /**
@@ -34,8 +40,12 @@ export const extractVerseReferences = (text) => {
   
   const references = new Set();
   
+  // Clean the text - ensure punctuation doesn't interfere with verse detection
+  // Remove punctuation that might appear after verse references but keep hyphens and colons
+  const cleanedText = text.replace(/([^\w\s:,-])/g, ' $1 ');
+  
   // Method 1: Using main regex with comprehensive parsing
-  const matches = Array.from(text.matchAll(new RegExp(VERSE_REGEX, 'g')));
+  const matches = Array.from(cleanedText.matchAll(new RegExp(VERSE_REGEX, 'g')));
   
   for (const match of matches) {
     const fullMatch = match[0];
@@ -95,14 +105,18 @@ export const extractVerseReferences = (text) => {
   
   // Method 2: Also use targeted patterns to catch edge cases
   for (const pattern of PATTERNS) {
-    const patternMatches = Array.from(text.matchAll(new RegExp(pattern, 'g')));
+    const patternMatches = Array.from(cleanedText.matchAll(new RegExp(pattern, 'g')));
     
     for (const match of patternMatches) {
       if (pattern.toString().includes('(?!\\s*:)')) {
         // Chapter-only pattern
         references.add(`${match[1]} ${match[2]}`);
-      } else if (match[4] && match[4].includes('-')) {
-        // Verse range
+      } else if (pattern.toString().includes(':(\\d+)-(\\d+)')) {
+        // Explicit verse range pattern
+        const endVerseIndex = pattern.toString().includes('([1-3]\\s[A-Za-z]+') ? 4 : 4;
+        references.add(`${match[1]} ${match[2]}:${match[3]}-${match[endVerseIndex]}`);
+      } else if (match[4] && !isNaN(match[4])) {
+        // Verse range from main patterns
         references.add(`${match[1]} ${match[2]}:${match[3]}-${match[4]}`);
       } else if (match[3]) {
         // Single verse
@@ -122,14 +136,17 @@ export const extractVerseReferences = (text) => {
 export const containsVerseReferences = (text) => {
   if (!text) return false;
   
+  // Clean the text similar to extract function
+  const cleanedText = text.replace(/([^\w\s:,-])/g, ' $1 ');
+  
   // Check with main regex
-  if (new RegExp(VERSE_REGEX, 'g').test(text)) {
+  if (new RegExp(VERSE_REGEX, 'g').test(cleanedText)) {
     return true;
   }
   
   // Also check with each pattern
   for (const pattern of PATTERNS) {
-    if (new RegExp(pattern, 'g').test(text)) {
+    if (new RegExp(pattern, 'g').test(cleanedText)) {
       return true;
     }
   }

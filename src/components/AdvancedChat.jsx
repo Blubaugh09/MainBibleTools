@@ -222,8 +222,9 @@ const AdvancedChat = () => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // Use word boundaries to ensure we only match complete references
-      const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
+      // More precise regex that handles punctuation after the reference
+      // Looks for the reference with word boundaries, but doesn't include trailing punctuation
+      const regex = new RegExp(`\\b${escapedRef}\\b(?![\\w:-])`, 'g');
       
       // Create a clickable span
       const replacement = `<span class="verse-reference" data-verse="${ref}">${ref}</span>`;
