@@ -56,6 +56,25 @@ const AdvancedChat = () => {
     checkServerHealth();
   }, [currentUser]);
 
+  // Add a global style to ensure all verse references have consistent styling
+  useEffect(() => {
+    // Add a global click handler for verse references
+    const handleGlobalVerseClick = (e) => {
+      const target = e.target.closest('.verse-reference');
+      if (target && target.dataset && target.dataset.verse) {
+        handleVerseClick(target.dataset.verse);
+      }
+    };
+
+    // Add event listener to the whole document
+    document.addEventListener('click', handleGlobalVerseClick);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('click', handleGlobalVerseClick);
+    };
+  }, []);
+
   // Save message to Firestore
   const saveMessageToFirestore = async (userMessage, assistantMessage) => {
     try {
@@ -204,8 +223,10 @@ const AdvancedChat = () => {
     }
   };
 
-  // Render message with clickable verse references
-  const renderMessageWithClickableVerses = (content) => {
+  // Process content to identify all verse references
+  const processContentWithVerseReferences = (content) => {
+    if (!content || typeof content !== 'string') return content;
+    
     if (!containsVerseReferences(content)) {
       return content;
     }
@@ -213,8 +234,7 @@ const AdvancedChat = () => {
     const references = extractVerseReferences(content);
     let processedContent = content;
     
-    // Sort references by length (descending) to handle overlapping references properly
-    // For example, process "John 1:1-2" before "John 1:1"
+    // Sort references by length (descending) to handle overlapping references
     const sortedReferences = [...references].sort((a, b) => b.length - a.length);
 
     // Replace verse references with clickable spans
@@ -222,20 +242,22 @@ const AdvancedChat = () => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // More precise regex that handles punctuation after the reference
-      // Looks for the reference with word boundaries, but doesn't include trailing punctuation
-      const regex = new RegExp(`\\b${escapedRef}\\b(?![\\w:-])`, 'g');
+      // Match references with lookahead/lookbehind to ensure we get complete references
+      const regex = new RegExp(`(^|\\s|>)(${escapedRef})($|\\s|[.,;:!?)]|<)`, 'g');
       
-      // Create a clickable span
-      const replacement = `<span class="verse-reference" data-verse="${ref}">${ref}</span>`;
-      
-      // Apply replacement
-      processedContent = processedContent.replace(regex, replacement);
+      // Create a clickable span - match the surrounding context
+      processedContent = processedContent.replace(
+        regex, 
+        (match, before, reference, after) => 
+          `${before}<span class="verse-reference" data-verse="${ref}">${reference}</span>${after}`
+      );
     });
 
-    // Return the processed HTML content
     return processedContent;
   };
+
+  // Replace the original renderMessageWithClickableVerses with the more robust processor
+  const renderMessageWithClickableVerses = processContentWithVerseReferences;
 
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
@@ -306,32 +328,17 @@ const AdvancedChat = () => {
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
                         components={{
-                          // Process paragraphs for verse references
+                          // Pre-process all text content to add verse reference markup
                           p: ({node, ...props}) => {
-                            const content = node.children
+                            const rawContent = node.children
                               .map(n => n.type === 'text' ? n.value : '')
                               .join('');
                             
-                            if (containsVerseReferences(content)) {
-                              const processedContent = renderMessageWithClickableVerses(content);
-                              return (
-                                <p 
-                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
-                                  onClick={(e) => {
-                                    const target = e.target.closest('.verse-reference') || e.target;
-                                    if (target.classList && target.classList.contains('verse-reference')) {
-                                      handleVerseClick(target.dataset.verse);
-                                    }
-                                  }}
-                                  className="prose-verse-references"
-                                />
-                              );
-                            }
-                            return <p {...props} />;
+                            const processedContent = renderMessageWithClickableVerses(rawContent);
+                            return <p dangerouslySetInnerHTML={{ __html: processedContent }} />;
                           },
-                          // Process list items for verse references
                           li: ({node, ...props}) => {
-                            const content = node.children
+                            const rawContent = node.children
                               .map(n => {
                                 if (n.type === 'text') return n.value;
                                 if (n.children) {
@@ -341,59 +348,37 @@ const AdvancedChat = () => {
                               })
                               .join('');
                             
-                            if (containsVerseReferences(content)) {
-                              const processedContent = renderMessageWithClickableVerses(content);
-                              return (
-                                <li 
-                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
-                                  onClick={(e) => {
-                                    const target = e.target.closest('.verse-reference') || e.target;
-                                    if (target.classList && target.classList.contains('verse-reference')) {
-                                      handleVerseClick(target.dataset.verse);
-                                    }
-                                  }}
-                                  className="prose-verse-references"
-                                />
-                              );
-                            }
-                            return <li {...props} />;
+                            const processedContent = renderMessageWithClickableVerses(rawContent);
+                            return <li dangerouslySetInnerHTML={{ __html: processedContent }} />;
                           },
-                          // Process links for verse references
                           a: ({node, href, children, ...props}) => {
-                            const content = typeof children === 'string' 
+                            // Check if children or href contain verse references
+                            const rawContent = typeof children === 'string' 
                               ? children 
                               : Array.isArray(children) 
                                 ? children.map(child => typeof child === 'string' ? child : '').join('')
                                 : '';
                             
-                            if (containsVerseReferences(content) || containsVerseReferences(href)) {
-                              const processedContent = renderMessageWithClickableVerses(content || href);
-                              return (
-                                <span 
-                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
-                                  onClick={(e) => {
-                                    const target = e.target.closest('.verse-reference') || e.target;
-                                    if (target.classList && target.classList.contains('verse-reference')) {
-                                      handleVerseClick(target.dataset.verse);
-                                    }
-                                  }}
-                                  className="prose-verse-references"
-                                />
-                              );
+                            // Process either the content or href for verse references
+                            const hasReferences = containsVerseReferences(rawContent) || containsVerseReferences(href);
+                            
+                            if (hasReferences) {
+                              const processedContent = renderMessageWithClickableVerses(rawContent || href);
+                              return <span dangerouslySetInnerHTML={{ __html: processedContent }} />;
                             }
                             
-                            // Check if href itself is a verse reference
+                            // Special case for hrefs that are verse references
                             if (href && containsVerseReferences(href)) {
                               const verseRef = extractVerseReferences(href)[0];
                               return (
                                 <a 
-                                  {...props}
                                   href="#"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     handleVerseClick(verseRef);
                                   }}
                                   className="verse-reference"
+                                  data-verse={verseRef}
                                 >
                                   {children}
                                 </a>
@@ -402,48 +387,38 @@ const AdvancedChat = () => {
                             
                             return <a href={href} {...props}>{children}</a>;
                           },
-                          // Process strong/bold elements for verse references
                           strong: ({node, children, ...props}) => {
-                            const content = typeof children === 'string' 
+                            const rawContent = typeof children === 'string' 
                               ? children 
                               : Array.isArray(children) 
                                 ? children.map(child => typeof child === 'string' ? child : '').join('')
                                 : '';
                             
-                            if (containsVerseReferences(content)) {
-                              const processedContent = renderMessageWithClickableVerses(content);
-                              return (
-                                <strong 
-                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
-                                  onClick={(e) => {
-                                    const target = e.target.closest('.verse-reference') || e.target;
-                                    if (target.classList && target.classList.contains('verse-reference')) {
-                                      handleVerseClick(target.dataset.verse);
-                                    }
-                                  }}
-                                  className="prose-verse-references"
-                                />
-                              );
+                            if (containsVerseReferences(rawContent)) {
+                              const processedContent = renderMessageWithClickableVerses(rawContent);
+                              return <strong dangerouslySetInnerHTML={{ __html: processedContent }} />;
                             }
                             return <strong {...props}>{children}</strong>;
                           },
-                          // Process plain text for verse references
+                          em: ({node, children, ...props}) => {
+                            const rawContent = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            if (containsVerseReferences(rawContent)) {
+                              const processedContent = renderMessageWithClickableVerses(rawContent);
+                              return <em dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                            }
+                            return <em {...props}>{children}</em>;
+                          },
+                          // Process all text nodes for verse references
                           text: ({node, ...props}) => {
-                            const content = node.value;
-                            if (containsVerseReferences(content)) {
-                              const processedContent = renderMessageWithClickableVerses(content);
-                              return (
-                                <span 
-                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
-                                  onClick={(e) => {
-                                    const target = e.target.closest('.verse-reference') || e.target;
-                                    if (target.classList && target.classList.contains('verse-reference')) {
-                                      handleVerseClick(target.dataset.verse);
-                                    }
-                                  }}
-                                  className="prose-verse-references"
-                                />
-                              );
+                            const rawContent = node.value;
+                            if (containsVerseReferences(rawContent)) {
+                              const processedContent = renderMessageWithClickableVerses(rawContent);
+                              return <span dangerouslySetInnerHTML={{ __html: processedContent }} />;
                             }
                             return <span {...props} />;
                           }
