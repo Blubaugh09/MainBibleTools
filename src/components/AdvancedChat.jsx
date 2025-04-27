@@ -215,8 +215,12 @@ const AdvancedChat = () => {
 
     // Replace verse references with clickable spans
     references.forEach(ref => {
+      // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Use word boundaries to ensure we only match complete references
       const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
+      
       processedContent = processedContent.replace(
         regex, 
         `<span class="verse-reference" data-verse="${ref}">${ref}</span>`
@@ -227,8 +231,9 @@ const AdvancedChat = () => {
       <div 
         dangerouslySetInnerHTML={{ __html: processedContent }}
         onClick={(e) => {
-          const target = e.target;
-          if (target.classList.contains('verse-reference')) {
+          // Find the closest verse reference element
+          const target = e.target.closest('.verse-reference') || e.target;
+          if (target.classList && target.classList.contains('verse-reference')) {
             handleVerseClick(target.dataset.verse);
           }
         }}
@@ -306,16 +311,41 @@ const AdvancedChat = () => {
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
                         components={{
+                          // Process paragraphs for verse references
                           p: ({node, ...props}) => {
-                            const content = node.children.map(n => 
-                              n.type === 'text' ? n.value : ''
-                            ).join('');
+                            const content = node.children
+                              .map(n => n.type === 'text' ? n.value : '')
+                              .join('');
                             
                             if (containsVerseReferences(content)) {
                               return renderMessageWithClickableVerses(content);
                             }
-                            
                             return <p {...props} />;
+                          },
+                          // Process list items for verse references
+                          li: ({node, ...props}) => {
+                            const content = node.children
+                              .map(n => {
+                                if (n.type === 'text') return n.value;
+                                if (n.children) {
+                                  return n.children.map(child => child.type === 'text' ? child.value : '').join('');
+                                }
+                                return '';
+                              })
+                              .join('');
+                            
+                            if (containsVerseReferences(content)) {
+                              return <li>{renderMessageWithClickableVerses(content)}</li>;
+                            }
+                            return <li {...props} />;
+                          },
+                          // Process plain text for verse references
+                          text: ({node, ...props}) => {
+                            const content = node.value;
+                            if (containsVerseReferences(content)) {
+                              return renderMessageWithClickableVerses(content);
+                            }
+                            return <span {...props} />;
                           }
                         }}
                       >
