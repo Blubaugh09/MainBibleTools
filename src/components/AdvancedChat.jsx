@@ -380,19 +380,6 @@ const AdvancedChat = () => {
         onClose={() => setIsVerseModalOpen(false)}
         verseReference={selectedVerse}
       />
-
-      {/* Add global styles for verse references */}
-      <style jsx global>{`
-        .verse-reference {
-          color: #4f46e5;
-          text-decoration: underline;
-          cursor: pointer;
-          font-weight: 500;
-        }
-        .verse-reference:hover {
-          color: #6366f1;
-        }
-      `}</style>
     </div>
   );
 };
