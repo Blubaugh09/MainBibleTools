@@ -69,3 +69,19 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Bible verse reference styling */
+.verse-reference {
+  color: #4f46e5;  /* indigo-600 */
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.2s;
+  padding: 0 2px;
+}
+
+.verse-reference:hover {
+  color: #6366f1;  /* indigo-500 */
+  background-color: rgba(79, 70, 229, 0.1);
+  border-radius: 2px;
+}

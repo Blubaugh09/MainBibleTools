@@ -5,6 +5,8 @@ import { useAuth } from '../firebase/AuthContext';
 import { db } from '../firebase/config';
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import axios from 'axios';
+import BibleVerseModal from './common/BibleVerseModal';
+import { extractVerseReferences, containsVerseReferences } from './common/VerseReferenceParser';
 
 // API base URL - use environment variable if available or default to relative path
 // In Vite, environment variables are accessed via import.meta.env instead of process.env
@@ -20,6 +22,10 @@ const AdvancedChat = () => {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const messagesEndRef = useRef(null);
   const { currentUser } = useAuth();
+  
+  // Bible verse modal state
+  const [isVerseModalOpen, setIsVerseModalOpen] = useState(false);
+  const [selectedVerse, setSelectedVerse] = useState('');
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -137,6 +143,12 @@ const AdvancedChat = () => {
     }
   };
 
+  // Handle verse reference click
+  const handleVerseClick = (verseRef) => {
+    setSelectedVerse(verseRef);
+    setIsVerseModalOpen(true);
+  };
+
   // Reset conversation - use when starting a new chat
   const resetConversation = () => {
     setMessages([]);
@@ -190,6 +202,39 @@ const AdvancedChat = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Render message with clickable verse references
+  const renderMessageWithClickableVerses = (content) => {
+    if (!containsVerseReferences(content)) {
+      return content;
+    }
+
+    const references = extractVerseReferences(content);
+    let processedContent = content;
+
+    // Replace verse references with clickable spans
+    references.forEach(ref => {
+      const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
+      processedContent = processedContent.replace(
+        regex, 
+        `<span class="verse-reference" data-verse="${ref}">${ref}</span>`
+      );
+    });
+
+    return (
+      <div 
+        dangerouslySetInnerHTML={{ __html: processedContent }}
+        onClick={(e) => {
+          const target = e.target;
+          if (target.classList.contains('verse-reference')) {
+            handleVerseClick(target.dataset.verse);
+          }
+        }}
+        className="prose-verse-references"
+      />
+    );
   };
 
   return (
@@ -260,6 +305,19 @@ const AdvancedChat = () => {
                     <div className="markdown-content">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({node, ...props}) => {
+                            const content = node.children.map(n => 
+                              n.type === 'text' ? n.value : ''
+                            ).join('');
+                            
+                            if (containsVerseReferences(content)) {
+                              return renderMessageWithClickableVerses(content);
+                            }
+                            
+                            return <p {...props} />;
+                          }
+                        }}
                       >
                         {msg.content}
                       </ReactMarkdown>
@@ -315,6 +373,26 @@ const AdvancedChat = () => {
           </button>
         </form>
       </div>
+      
+      {/* Bible Verse Modal */}
+      <BibleVerseModal 
+        isOpen={isVerseModalOpen}
+        onClose={() => setIsVerseModalOpen(false)}
+        verseReference={selectedVerse}
+      />
+
+      {/* Add global styles for verse references */}
+      <style jsx global>{`
+        .verse-reference {
+          color: #4f46e5;
+          text-decoration: underline;
+          cursor: pointer;
+          font-weight: 500;
+        }
+        .verse-reference:hover {
+          color: #6366f1;
+        }
+      `}</style>
     </div>
   );
 };
