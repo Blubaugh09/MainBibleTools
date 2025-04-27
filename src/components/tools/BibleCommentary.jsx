@@ -93,17 +93,24 @@ const BibleCommentary = () => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // Use a simple regex that directly matches the reference
-      const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
+      // Use more precise regex that requires word boundaries to avoid capturing preceding words
+      // This ensures we match "Genesis 3" but not include words like "in" before it
+      const regex = new RegExp(`(^|\\s|[;:.,>"'])(${escapedRef})\\b`, 'g');
       
       // Find all matches in the content
       let match;
       matches[ref] = [];
       while ((match = regex.exec(content)) !== null) {
+        // The actual reference is in the second capturing group
+        const actualRef = match[2];
+        const startIndex = match.index + match[1].length; // Skip the preceding character/space
+        
         matches[ref].push({
-          index: match.index,
-          length: match[0].length,
-          text: match[0]
+          index: startIndex,
+          length: actualRef.length,
+          text: actualRef,
+          fullMatch: match[0],
+          beforeText: match[1]
         });
       }
     });
