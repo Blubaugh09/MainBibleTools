@@ -3,14 +3,26 @@
  */
 
 // Enhanced regular expression to match more Bible verse patterns
-// Handles:
-// - John 1:1
-// - Genesis 1:1-10
-// - 1 Corinthians 13:4-7
-// - Romans 8:28, 38-39
-// - Revelation 21:3-4, 6-8
-// - Book names with spaces and numbers (1 John, 2 Peter)
-const VERSE_REGEX = /\b((?:[1-3]\s)?[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?(?:,\s*(\d+)(?:-(\d+))?)*\b/g;
+// Handles virtually all common Bible verse reference formats
+const VERSE_REGEX = /\b((?:[1-3](?:\s|\s?)[A-Za-z]+(?:\s[A-Za-z]+)?)|(?:[A-Za-z]+(?:\s[A-Za-z]+)?))\s+(\d+)(?::(\d+)(?:-(\d+))?)?(?:,\s*(?:\d+)(?:-\d+)?)*\b/g;
+
+// Alternative approach with multiple targeted patterns
+const PATTERNS = [
+  // Standard formats: John 3:16, Genesis 1:1-10
+  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)(?:-(\d+))?\b/g,
+  
+  // Books with numbers: 1 John 1:1, 2 Corinthians 5:17
+  /\b([1-3]\s[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)(?:-(\d+))?\b/g,
+  
+  // Chapter only: John 3, Genesis 1
+  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)\b(?!\s*:)/g,
+  
+  // Chapter only with numbered books: 1 John 3, 2 Kings 4
+  /\b([1-3]\s[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)\b(?!\s*:)/g,
+  
+  // Comma-separated verses: John 3:16,18,20-22
+  /\b([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+):(\d+)(?:,(\d+))*(?:-(\d+))?\b/g
+];
 
 /**
  * Extract verse references from a string of text
@@ -20,66 +32,86 @@ const VERSE_REGEX = /\b((?:[1-3]\s)?[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)(?::(\d+)(
 export const extractVerseReferences = (text) => {
   if (!text) return [];
   
-  // Create a copy of the regex to reset lastIndex
-  const regex = new RegExp(VERSE_REGEX);
-  const matches = Array.from(text.matchAll(regex));
-  const references = [];
+  const references = new Set();
+  
+  // Method 1: Using main regex with comprehensive parsing
+  const matches = Array.from(text.matchAll(new RegExp(VERSE_REGEX, 'g')));
   
   for (const match of matches) {
-    // Basic reference like "John 3:16"
-    if (match[1] && match[2] && match[3]) {
-      const book = match[1];
-      const chapter = match[2];
+    const fullMatch = match[0];
+    let book = match[1]?.trim();
+    let chapter = match[2]?.trim();
+    
+    // Skip if book or chapter is missing
+    if (!book || !chapter) continue;
+    
+    // Handle specific verse reference (John 3:16)
+    if (match[3]) {
       const verse = match[3];
-      const endVerse = match[4]; // For ranges like "John 3:16-18"
+      const endVerse = match[4];
       
       if (endVerse) {
-        references.push(`${book} ${chapter}:${verse}-${endVerse}`);
+        references.add(`${book} ${chapter}:${verse}-${endVerse}`);
       } else {
-        references.push(`${book} ${chapter}:${verse}`);
+        references.add(`${book} ${chapter}:${verse}`);
       }
-    } else if (match[1] && match[2]) {
-      // Chapter reference like "John 3"
-      references.push(`${match[1]} ${match[2]}`);
+    } 
+    // Handle chapter-only reference (John 3)
+    else {
+      references.add(`${book} ${chapter}`);
     }
     
-    // Handle comma-separated verses like "John 3:16, 18, 20-22"
-    const fullMatch = match[0];
+    // Handle comma-separated verses
     if (fullMatch.includes(',')) {
-      const parts = fullMatch.split(',');
-      if (parts.length > 1) {
-        // Already handled the first part above
-        const [book, chapter] = parts[0].match(/^((?:[1-3]\s)?[A-Za-z]+(?:\s[A-Za-z]+)?)\s+(\d+)/).slice(1, 3);
+      try {
+        const parts = fullMatch.split(',');
+        const firstPart = parts[0];
         
-        // Handle additional comma-separated verses
-        for (let i = 1; i < parts.length; i++) {
-          const part = parts[i].trim();
-          if (part.includes(':')) {
-            // Handle "chapter:verse" format in subsequent parts
-            const [chapterVerse, verseRange] = part.split(':');
-            if (verseRange) {
-              if (verseRange.includes('-')) {
-                const [startVerse, endVerse] = verseRange.split('-');
-                references.push(`${book} ${chapterVerse}:${startVerse}-${endVerse}`);
-              } else {
-                references.push(`${book} ${chapterVerse}:${verseRange}`);
-              }
+        // Extract book and chapter from first part
+        const bookChapterMatch = firstPart.match(/^(.+?)\s+(\d+)(?::(\d+))?/);
+        if (bookChapterMatch) {
+          const [, extractedBook, extractedChapter] = bookChapterMatch;
+          
+          // Process remaining parts
+          for (let i = 1; i < parts.length; i++) {
+            let part = parts[i].trim();
+            
+            // Handle verse ranges (e.g., "18-20")
+            if (part.includes('-')) {
+              const [startVerse, endVerse] = part.split('-');
+              references.add(`${extractedBook} ${extractedChapter}:${startVerse}-${endVerse}`);
+            } 
+            // Handle single verses (e.g., "18")
+            else if (/^\d+$/.test(part)) {
+              references.add(`${extractedBook} ${extractedChapter}:${part}`);
             }
-          } else if (part.includes('-')) {
-            // Handle verse ranges like "18-20"
-            const [startVerse, endVerse] = part.split('-');
-            references.push(`${book} ${chapter}:${startVerse}-${endVerse}`);
-          } else {
-            // Handle single verses like "18"
-            references.push(`${book} ${chapter}:${part}`);
           }
         }
+      } catch (e) {
+        console.error('Error parsing comma-separated verses', e);
       }
     }
   }
   
-  // Return unique references
-  return [...new Set(references)];
+  // Method 2: Also use targeted patterns to catch edge cases
+  for (const pattern of PATTERNS) {
+    const patternMatches = Array.from(text.matchAll(new RegExp(pattern, 'g')));
+    
+    for (const match of patternMatches) {
+      if (pattern.toString().includes('(?!\\s*:)')) {
+        // Chapter-only pattern
+        references.add(`${match[1]} ${match[2]}`);
+      } else if (match[4] && match[4].includes('-')) {
+        // Verse range
+        references.add(`${match[1]} ${match[2]}:${match[3]}-${match[4]}`);
+      } else if (match[3]) {
+        // Single verse
+        references.add(`${match[1]} ${match[2]}:${match[3]}`);
+      }
+    }
+  }
+  
+  return Array.from(references);
 };
 
 /**
@@ -90,9 +122,19 @@ export const extractVerseReferences = (text) => {
 export const containsVerseReferences = (text) => {
   if (!text) return false;
   
-  // Create a copy of the regex to reset lastIndex
-  const regex = new RegExp(VERSE_REGEX);
-  return regex.test(text);
+  // Check with main regex
+  if (new RegExp(VERSE_REGEX, 'g').test(text)) {
+    return true;
+  }
+  
+  // Also check with each pattern
+  for (const pattern of PATTERNS) {
+    if (new RegExp(pattern, 'g').test(text)) {
+      return true;
+    }
+  }
+  
+  return false;
 };
 
 export default {

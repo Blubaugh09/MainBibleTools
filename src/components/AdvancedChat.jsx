@@ -213,6 +213,9 @@ const AdvancedChat = () => {
     const references = extractVerseReferences(content);
     let processedContent = content;
 
+    // If the content is already HTML or has HTML-like structure
+    const hasHTML = /<[a-z][\s\S]*>/i.test(content);
+
     // Replace verse references with clickable spans
     references.forEach(ref => {
       // Escape special regex characters in the reference
@@ -221,10 +224,11 @@ const AdvancedChat = () => {
       // Use word boundaries to ensure we only match complete references
       const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
       
-      processedContent = processedContent.replace(
-        regex, 
-        `<span class="verse-reference" data-verse="${ref}">${ref}</span>`
-      );
+      // Create a clickable span
+      const replacement = `<span class="verse-reference" data-verse="${ref}">${ref}</span>`;
+      
+      // Apply replacement
+      processedContent = processedContent.replace(regex, replacement);
     });
 
     return (
@@ -237,7 +241,7 @@ const AdvancedChat = () => {
             handleVerseClick(target.dataset.verse);
           }
         }}
-        className="prose-verse-references"
+        className={`prose-verse-references ${hasHTML ? 'preserve-html' : ''}`}
       />
     );
   };
@@ -338,6 +342,51 @@ const AdvancedChat = () => {
                               return <li>{renderMessageWithClickableVerses(content)}</li>;
                             }
                             return <li {...props} />;
+                          },
+                          // Process links for verse references
+                          a: ({node, href, children, ...props}) => {
+                            const content = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            if (containsVerseReferences(content) || containsVerseReferences(href)) {
+                              return renderMessageWithClickableVerses(content || href);
+                            }
+                            
+                            // Check if href itself is a verse reference
+                            if (href && containsVerseReferences(href)) {
+                              const verseRef = extractVerseReferences(href)[0];
+                              return (
+                                <a 
+                                  {...props}
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleVerseClick(verseRef);
+                                  }}
+                                  className="verse-reference"
+                                >
+                                  {children}
+                                </a>
+                              );
+                            }
+                            
+                            return <a href={href} {...props}>{children}</a>;
+                          },
+                          // Process strong/bold elements for verse references
+                          strong: ({node, children, ...props}) => {
+                            const content = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            if (containsVerseReferences(content)) {
+                              return <strong>{renderMessageWithClickableVerses(content)}</strong>;
+                            }
+                            return <strong {...props}>{children}</strong>;
                           },
                           // Process plain text for verse references
                           text: ({node, ...props}) => {

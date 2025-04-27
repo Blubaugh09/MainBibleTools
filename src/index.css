@@ -85,3 +85,37 @@ button:focus-visible {
   background-color: rgba(79, 70, 229, 0.1);
   border-radius: 2px;
 }
+
+/* Additional verse reference styling for different contexts */
+a .verse-reference,
+a.verse-reference,
+strong .verse-reference,
+em .verse-reference {
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+a.verse-reference:hover,
+a .verse-reference:hover,
+strong .verse-reference:hover {
+  text-decoration: underline;
+  background-color: rgba(79, 70, 229, 0.1);
+}
+
+/* Make sure verse references within paragraphs don't break layout */
+p .verse-reference,
+li .verse-reference {
+  display: inline;
+}
+
+/* Preserve HTML structure in rendered content */
+.preserve-html {
+  white-space: normal;
+}
+
+/* Fix for links that contain verse references */
+a[href] {
+  color: #4f46e5;
+  text-decoration: underline;
+}
