@@ -7,7 +7,8 @@ import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, getDocs, q
 import axios from 'axios';
 
 // API base URL - use environment variable if available or default to relative path
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+// In Vite, environment variables are accessed via import.meta.env instead of process.env
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const AdvancedChat = () => {
   const [input, setInput] = useState('');
@@ -170,7 +171,7 @@ const AdvancedChat = () => {
 
       console.log('Response received:', response.data);
       
-      // With axios, we can directly use response.data
+      // With axios, response.data is already parsed JSON
       const assistantMessage = { role: 'assistant', content: response.data.message };
       setMessages(prev => [...prev, assistantMessage]);
 
