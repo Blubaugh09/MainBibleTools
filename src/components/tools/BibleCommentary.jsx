@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm';
 import { useAuth } from '../../firebase/AuthContext';
 import { db } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import BibleVerseModal from '../common/BibleVerseModal';
+import { extractVerseReferences, containsVerseReferences } from '../common/VerseReferenceParser';
 
 const BibleCommentary = () => {
   const [book, setBook] = useState('Genesis');
@@ -17,6 +19,10 @@ const BibleCommentary = () => {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const commentaryRef = useRef(null);
   const { currentUser } = useAuth();
+  
+  // Bible verse modal state
+  const [isVerseModalOpen, setIsVerseModalOpen] = useState(false);
+  const [selectedVerse, setSelectedVerse] = useState('');
 
   // Bible books array for dropdown
   const bibleBooks = [
@@ -33,10 +39,122 @@ const BibleCommentary = () => {
     "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
   ];
 
+  // Setup global verse click handler
+  useEffect(() => {
+    // Add a global click handler for verse references
+    const handleGlobalVerseClick = (e) => {
+      const target = e.target.closest('.verse-reference');
+      if (target && target.dataset && target.dataset.verse) {
+        handleVerseClick(target.dataset.verse);
+      }
+    };
+    
+    // Add a custom event handler for verse clicks
+    const handleCustomVerseClick = (e) => {
+      if (e.detail && e.detail.verse) {
+        handleVerseClick(e.detail.verse);
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('click', handleGlobalVerseClick);
+    document.addEventListener('verse-click', handleCustomVerseClick);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('click', handleGlobalVerseClick);
+      document.removeEventListener('verse-click', handleCustomVerseClick);
+    };
+  }, []);
+
   // Auto-scroll to bottom when commentary or conversation history changes
   useEffect(() => {
     commentaryRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [commentary, conversationHistory]);
+
+  // Process content to identify and make verse references clickable
+  const processContentWithVerseReferences = (content) => {
+    if (!content || typeof content !== 'string') return content;
+    
+    if (!containsVerseReferences(content)) {
+      return content;
+    }
+
+    const references = extractVerseReferences(content);
+    
+    // Sort references by length (descending) to handle overlapping references
+    const sortedReferences = [...references].sort((a, b) => b.length - a.length);
+
+    // Store the matches for each reference to avoid double-processing
+    const matches = {};
+
+    // First identify all references in the content 
+    sortedReferences.forEach(ref => {
+      // Escape special regex characters in the reference
+      const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Use a simple regex that directly matches the reference
+      const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
+      
+      // Find all matches in the content
+      let match;
+      matches[ref] = [];
+      while ((match = regex.exec(content)) !== null) {
+        matches[ref].push({
+          index: match.index,
+          length: match[0].length,
+          text: match[0]
+        });
+      }
+    });
+    
+    // No references found in the actual content
+    if (Object.values(matches).every(arr => arr.length === 0)) {
+      return content;
+    }
+    
+    // Process the content to replace references with clickable spans
+    // We'll build a new string character by character
+    let result = '';
+    let skipTo = 0;
+    
+    for (let i = 0; i < content.length; i++) {
+      // Skip if we've already processed this part
+      if (i < skipTo) continue;
+      
+      // Check if any reference starts at this position
+      let matched = false;
+      
+      for (const ref of sortedReferences) {
+        for (const match of matches[ref]) {
+          if (match.index === i) {
+            // Create a clickable span for this reference
+            const span = `<span class="verse-reference" data-verse="${ref}" onclick="(function(e) { var event = new CustomEvent('verse-click', { detail: { verse: '${ref}' } }); document.dispatchEvent(event); })(event)" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
+            result += span;
+            
+            // Skip the length of the reference
+            skipTo = i + match.length;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      
+      // If no reference matched at this position, just add the character
+      if (!matched && i >= skipTo) {
+        result += content[i];
+      }
+    }
+    
+    return result;
+  };
+
+  // Handle verse reference click
+  const handleVerseClick = (verseRef) => {
+    setSelectedVerse(verseRef);
+    setIsVerseModalOpen(true);
+  };
 
   // Check if the server is running when the component mounts
   useEffect(() => {
@@ -478,16 +596,98 @@ const BibleCommentary = () => {
                           h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
                           h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
                           h3: ({node, ...props}) => <h3 className="text-md font-bold mb-1" {...props} />,
-                          p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                          p: ({node, ...props}) => {
+                            const rawContent = node.children
+                              .map(n => n.type === 'text' ? n.value : '')
+                              .join('');
+                            
+                            const processedContent = processContentWithVerseReferences(rawContent);
+                            return <p dangerouslySetInnerHTML={{ __html: processedContent }} className="mb-2" />;
+                          },
                           ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2" {...props} />,
                           ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2" {...props} />,
-                          li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                          a: ({node, ...props}) => <a className="text-blue-600 hover:underline" {...props} />,
+                          li: ({node, ...props}) => {
+                            const rawContent = node.children
+                              .map(n => {
+                                if (n.type === 'text') return n.value;
+                                if (n.children) {
+                                  return n.children.map(child => child.type === 'text' ? child.value : '').join('');
+                                }
+                                return '';
+                              })
+                              .join('');
+                            
+                            const processedContent = processContentWithVerseReferences(rawContent);
+                            return <li dangerouslySetInnerHTML={{ __html: processedContent }} className="mb-1" />;
+                          },
+                          a: ({node, href, children, ...props}) => {
+                            // Check if children or href contain verse references
+                            const rawContent = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            // Process either the content or href for verse references
+                            const hasReferences = containsVerseReferences(rawContent) || containsVerseReferences(href);
+                            
+                            if (hasReferences) {
+                              const processedContent = processContentWithVerseReferences(rawContent || href);
+                              return <span dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                            }
+                            
+                            // Special case for hrefs that are verse references
+                            if (href && containsVerseReferences(href)) {
+                              const verseRef = extractVerseReferences(href)[0];
+                              return (
+                                <a 
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleVerseClick(verseRef);
+                                  }}
+                                  className="verse-reference text-blue-600 hover:underline"
+                                  data-verse={verseRef}
+                                >
+                                  {children}
+                                </a>
+                              );
+                            }
+                            
+                            return <a className="text-blue-600 hover:underline" href={href} {...props}>{children}</a>;
+                          },
                           blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2" {...props} />,
                           code: ({node, inline, ...props}) => 
                             inline 
                               ? <code className="bg-gray-100 text-sm rounded px-1 py-0.5" {...props} />
-                              : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>
+                              : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>,
+                          // Add support for strong and em with verse references
+                          strong: ({node, children, ...props}) => {
+                            const rawContent = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            if (containsVerseReferences(rawContent)) {
+                              const processedContent = processContentWithVerseReferences(rawContent);
+                              return <strong dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                            }
+                            return <strong {...props}>{children}</strong>;
+                          },
+                          em: ({node, children, ...props}) => {
+                            const rawContent = typeof children === 'string' 
+                              ? children 
+                              : Array.isArray(children) 
+                                ? children.map(child => typeof child === 'string' ? child : '').join('')
+                                : '';
+                            
+                            if (containsVerseReferences(rawContent)) {
+                              const processedContent = processContentWithVerseReferences(rawContent);
+                              return <em dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                            }
+                            return <em {...props}>{children}</em>;
+                          },
                         }}
                       >
                         {msg.content}
@@ -547,16 +747,98 @@ const BibleCommentary = () => {
                   h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
                   h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
                   h3: ({node, ...props}) => <h3 className="text-md font-bold mb-1" {...props} />,
-                  p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                  p: ({node, ...props}) => {
+                    const rawContent = node.children
+                      .map(n => n.type === 'text' ? n.value : '')
+                      .join('');
+                    
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <p dangerouslySetInnerHTML={{ __html: processedContent }} className="mb-2" />;
+                  },
                   ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2" {...props} />,
                   ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2" {...props} />,
-                  li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                  a: ({node, ...props}) => <a className="text-blue-600 hover:underline" {...props} />,
+                  li: ({node, ...props}) => {
+                    const rawContent = node.children
+                      .map(n => {
+                        if (n.type === 'text') return n.value;
+                        if (n.children) {
+                          return n.children.map(child => child.type === 'text' ? child.value : '').join('');
+                        }
+                        return '';
+                      })
+                      .join('');
+                    
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <li dangerouslySetInnerHTML={{ __html: processedContent }} className="mb-1" />;
+                  },
+                  a: ({node, href, children, ...props}) => {
+                    // Check if children or href contain verse references
+                    const rawContent = typeof children === 'string' 
+                      ? children 
+                      : Array.isArray(children) 
+                        ? children.map(child => typeof child === 'string' ? child : '').join('')
+                        : '';
+                    
+                    // Process either the content or href for verse references
+                    const hasReferences = containsVerseReferences(rawContent) || containsVerseReferences(href);
+                    
+                    if (hasReferences) {
+                      const processedContent = processContentWithVerseReferences(rawContent || href);
+                      return <span dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                    }
+                    
+                    // Special case for hrefs that are verse references
+                    if (href && containsVerseReferences(href)) {
+                      const verseRef = extractVerseReferences(href)[0];
+                      return (
+                        <a 
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleVerseClick(verseRef);
+                          }}
+                          className="verse-reference text-blue-600 hover:underline"
+                          data-verse={verseRef}
+                        >
+                          {children}
+                        </a>
+                      );
+                    }
+                    
+                    return <a className="text-blue-600 hover:underline" href={href} {...props}>{children}</a>;
+                  },
                   blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2" {...props} />,
                   code: ({node, inline, ...props}) => 
                     inline 
                       ? <code className="bg-gray-100 text-sm rounded px-1 py-0.5" {...props} />
-                      : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>
+                      : <pre className="bg-gray-100 p-2 rounded my-2 overflow-x-auto"><code {...props} /></pre>,
+                  // Add support for strong and em with verse references
+                  strong: ({node, children, ...props}) => {
+                    const rawContent = typeof children === 'string' 
+                      ? children 
+                      : Array.isArray(children) 
+                        ? children.map(child => typeof child === 'string' ? child : '').join('')
+                        : '';
+                    
+                    if (containsVerseReferences(rawContent)) {
+                      const processedContent = processContentWithVerseReferences(rawContent);
+                      return <strong dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                    }
+                    return <strong {...props}>{children}</strong>;
+                  },
+                  em: ({node, children, ...props}) => {
+                    const rawContent = typeof children === 'string' 
+                      ? children 
+                      : Array.isArray(children) 
+                        ? children.map(child => typeof child === 'string' ? child : '').join('')
+                        : '';
+                    
+                    if (containsVerseReferences(rawContent)) {
+                      const processedContent = processContentWithVerseReferences(rawContent);
+                      return <em dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                    }
+                    return <em {...props}>{children}</em>;
+                  },
                 }}
               >
                 {commentary}
@@ -571,6 +853,13 @@ const BibleCommentary = () => {
           </div>
         )}
       </div>
+      
+      {/* Bible Verse Modal */}
+      <BibleVerseModal 
+        isOpen={isVerseModalOpen}
+        onClose={() => setIsVerseModalOpen(false)}
+        verseReference={selectedVerse}
+      />
     </div>
   );
 };

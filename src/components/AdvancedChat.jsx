@@ -60,31 +60,25 @@ const AdvancedChat = () => {
   useEffect(() => {
     // Add a global click handler for verse references
     const handleGlobalVerseClick = (e) => {
-      console.log('Global click detected:', e.target);
       const target = e.target.closest('.verse-reference');
       if (target && target.dataset && target.dataset.verse) {
-        console.log('Verse reference clicked via delegation:', target.dataset.verse);
         handleVerseClick(target.dataset.verse);
       }
     };
 
     // Add a custom event handler for verse clicks
     const handleCustomVerseClick = (e) => {
-      console.log('Custom verse-click event received:', e.detail);
       if (e.detail && e.detail.verse) {
-        console.log('Opening verse modal for:', e.detail.verse);
         handleVerseClick(e.detail.verse);
       }
     };
 
-    console.log('Setting up verse click event handlers');
     // Add event listeners
     document.addEventListener('click', handleGlobalVerseClick);
     document.addEventListener('verse-click', handleCustomVerseClick);
     
     // Cleanup
     return () => {
-      console.log('Cleaning up verse click event handlers');
       document.removeEventListener('click', handleGlobalVerseClick);
       document.removeEventListener('verse-click', handleCustomVerseClick);
     };
@@ -177,9 +171,8 @@ const AdvancedChat = () => {
     }
   };
 
-  // Handle verse reference click with logging
+  // Handle verse reference click
   const handleVerseClick = (verseRef) => {
-    console.log('handleVerseClick called with:', verseRef);
     setSelectedVerse(verseRef);
     setIsVerseModalOpen(true);
   };
@@ -243,19 +236,14 @@ const AdvancedChat = () => {
   const processContentWithVerseReferences = (content) => {
     if (!content || typeof content !== 'string') return content;
     
-    console.log('Processing content for verse references:', content.substring(0, 100) + '...');
-    
     if (!containsVerseReferences(content)) {
-      console.log('No verse references found in content');
       return content;
     }
 
     const references = extractVerseReferences(content);
-    console.log('Detected verse references:', references);
     
     // Sort references by length (descending) to handle overlapping references
     const sortedReferences = [...references].sort((a, b) => b.length - a.length);
-    console.log('Sorted references:', sortedReferences);
 
     // Store the matches for each reference to avoid double-processing
     const matches = {};
@@ -264,7 +252,6 @@ const AdvancedChat = () => {
     sortedReferences.forEach(ref => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      console.log(`Looking for reference: ${ref}, escaped as: ${escapedRef}`);
       
       // Use a simple regex that directly matches the reference
       const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
@@ -273,7 +260,6 @@ const AdvancedChat = () => {
       let match;
       matches[ref] = [];
       while ((match = regex.exec(content)) !== null) {
-        console.log(`Found match for ${ref} at index ${match.index}: "${match[0]}"`);
         matches[ref].push({
           index: match.index,
           length: match[0].length,
@@ -282,11 +268,8 @@ const AdvancedChat = () => {
       }
     });
     
-    console.log('All matches:', matches);
-    
     // No references found in the actual content
     if (Object.values(matches).every(arr => arr.length === 0)) {
-      console.log('No actual matches found in content despite extracted references');
       return content;
     }
     
@@ -306,9 +289,8 @@ const AdvancedChat = () => {
         for (const match of matches[ref]) {
           if (match.index === i) {
             // Create a clickable span for this reference
-            const span = `<span class="verse-reference" data-verse="${ref}" onclick="(function(e) { console.log('Verse clicked:', '${ref}'); var event = new CustomEvent('verse-click', { detail: { verse: '${ref}' } }); document.dispatchEvent(event); })(event)" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
+            const span = `<span class="verse-reference" data-verse="${ref}" onclick="(function(e) { var event = new CustomEvent('verse-click', { detail: { verse: '${ref}' } }); document.dispatchEvent(event); })(event)" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
             result += span;
-            console.log(`Added span for ${ref} at position ${i}: ${span}`);
             
             // Skip the length of the reference
             skipTo = i + match.length;
@@ -325,7 +307,6 @@ const AdvancedChat = () => {
       }
     }
     
-    console.log('Processed content result (first 100 chars):', result.substring(0, 100) + '...');
     return result;
   };
 
