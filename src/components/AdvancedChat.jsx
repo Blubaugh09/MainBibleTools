@@ -66,12 +66,21 @@ const AdvancedChat = () => {
       }
     };
 
-    // Add event listener to the whole document
+    // Add a custom event handler for verse clicks
+    const handleCustomVerseClick = (e) => {
+      if (e.detail && e.detail.verse) {
+        handleVerseClick(e.detail.verse);
+      }
+    };
+
+    // Add event listeners
     document.addEventListener('click', handleGlobalVerseClick);
+    document.addEventListener('verse-click', handleCustomVerseClick);
     
     // Cleanup
     return () => {
       document.removeEventListener('click', handleGlobalVerseClick);
+      document.removeEventListener('verse-click', handleCustomVerseClick);
     };
   }, []);
 
@@ -232,28 +241,68 @@ const AdvancedChat = () => {
     }
 
     const references = extractVerseReferences(content);
-    let processedContent = content;
     
     // Sort references by length (descending) to handle overlapping references
     const sortedReferences = [...references].sort((a, b) => b.length - a.length);
 
-    // Replace verse references with clickable spans
+    // Store the matches for each reference to avoid double-processing
+    const matches = {};
+
+    // First identify all references in the content 
     sortedReferences.forEach(ref => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
-      // Match references with lookahead/lookbehind to ensure we get complete references
-      const regex = new RegExp(`(^|\\s|>)(${escapedRef})($|\\s|[.,;:!?)]|<)`, 'g');
+      // Use a simple regex that directly matches the reference
+      const regex = new RegExp(`\\b${escapedRef}\\b`, 'g');
       
-      // Create a clickable span - match the surrounding context
-      processedContent = processedContent.replace(
-        regex, 
-        (match, before, reference, after) => 
-          `${before}<span class="verse-reference" data-verse="${ref}">${reference}</span>${after}`
-      );
+      // Find all matches in the content
+      let match;
+      matches[ref] = [];
+      while ((match = regex.exec(content)) !== null) {
+        matches[ref].push({
+          index: match.index,
+          length: match[0].length,
+          text: match[0]
+        });
+      }
     });
-
-    return processedContent;
+    
+    // Process the content to replace references with clickable spans
+    // We'll build a new string character by character
+    let result = '';
+    let skipTo = 0;
+    
+    for (let i = 0; i < content.length; i++) {
+      // Skip if we've already processed this part
+      if (i < skipTo) continue;
+      
+      // Check if any reference starts at this position
+      let matched = false;
+      
+      for (const ref of sortedReferences) {
+        for (const match of matches[ref]) {
+          if (match.index === i) {
+            // Create a clickable span for this reference
+            const span = `<span class="verse-reference" onclick="document.dispatchEvent(new CustomEvent('verse-click', { detail: { verse: '${ref}' } }))" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
+            result += span;
+            
+            // Skip the length of the reference
+            skipTo = i + match.length;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      
+      // If no reference matched at this position, just add the character
+      if (!matched && i >= skipTo) {
+        result += content[i];
+      }
+    }
+    
+    return result;
   };
 
   // Replace the original renderMessageWithClickableVerses with the more robust processor
