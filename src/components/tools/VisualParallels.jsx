@@ -700,7 +700,11 @@ const VisualParallels = () => {
                 </h2>
                 <h3 className="text-lg font-semibold mb-2">{parallelData.elementA.name}</h3>
                 <p className={`text-sm mb-4 ${parallelData.elementA.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
-                  {parallelData.elementA.reference}
+                  {containsVerseReferences(parallelData.elementA.reference) ? (
+                    <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(parallelData.elementA.reference) }} />
+                  ) : (
+                    parallelData.elementA.reference
+                  )}
                 </p>
                 
                 <div className="mb-4">
@@ -759,7 +763,11 @@ const VisualParallels = () => {
                 </h2>
                 <h3 className="text-lg font-semibold mb-2">{parallelData.elementB.name}</h3>
                 <p className={`text-sm mb-4 ${parallelData.elementB.testament === "Old" ? "text-amber-800" : "text-blue-800"}`}>
-                  {parallelData.elementB.reference}
+                  {containsVerseReferences(parallelData.elementB.reference) ? (
+                    <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(parallelData.elementB.reference) }} />
+                  ) : (
+                    parallelData.elementB.reference
+                  )}
                 </p>
                 
                 <div className="mb-4">
