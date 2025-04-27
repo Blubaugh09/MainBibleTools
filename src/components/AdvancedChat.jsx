@@ -212,12 +212,13 @@ const AdvancedChat = () => {
 
     const references = extractVerseReferences(content);
     let processedContent = content;
-
-    // If the content is already HTML or has HTML-like structure
-    const hasHTML = /<[a-z][\s\S]*>/i.test(content);
+    
+    // Sort references by length (descending) to handle overlapping references properly
+    // For example, process "John 1:1-2" before "John 1:1"
+    const sortedReferences = [...references].sort((a, b) => b.length - a.length);
 
     // Replace verse references with clickable spans
-    references.forEach(ref => {
+    sortedReferences.forEach(ref => {
       // Escape special regex characters in the reference
       const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
@@ -231,7 +232,7 @@ const AdvancedChat = () => {
       processedContent = processedContent.replace(regex, replacement);
     });
 
-    // Return the processed HTML content instead of a React element
+    // Return the processed HTML content
     return processedContent;
   };
 
