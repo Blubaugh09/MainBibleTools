@@ -1104,12 +1104,19 @@ app.post('/api/tools/personal-study', async (req, res) => {
 
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
-  // Serve static files
+  // First serve static files
   app.use(express.static(path.join(__dirname, 'dist')));
   
-  // For all other routes, render the index.html file
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+  // Avoid the URL parsing issue with path-to-regexp by removing the wildcard parameter
+  // and simply serving the index.html for any other route
+  app.use((req, res, next) => {
+    // Skip if the request is for an API endpoint
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    
+    // For all other routes, serve the index.html file
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 }
 
