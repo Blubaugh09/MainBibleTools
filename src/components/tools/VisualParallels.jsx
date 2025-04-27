@@ -5,6 +5,8 @@ import { useAuth } from '../../firebase/AuthContext';
 import { db, storage } from '../../firebase/config';
 import { collection, addDoc, serverTimestamp, updateDoc, doc, getDoc, query as firestoreQuery, where, getDocs } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import BibleVerseModal from '../common/BibleVerseModal';
+import { extractVerseReferences, containsVerseReferences } from '../common/VerseReferenceParser';
 
 const VisualParallels = () => {
   const [queryInput, setQueryInput] = useState('');
@@ -17,6 +19,9 @@ const VisualParallels = () => {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState('');
   const [storedImageUrl, setStoredImageUrl] = useState(null);
+  // Bible verse modal state
+  const [isVerseModalOpen, setIsVerseModalOpen] = useState(false);
+  const [selectedVerse, setSelectedVerse] = useState('');
   const resultsRef = useRef(null);
   const { currentUser } = useAuth();
 
@@ -27,7 +32,125 @@ const VisualParallels = () => {
     }
   }, [parallelData]);
 
-  // Check if the server is running when the component mounts
+  // Setup global verse click handler
+  useEffect(() => {
+    // Add a global click handler for verse references
+    const handleGlobalVerseClick = (e) => {
+      const target = e.target.closest('.verse-reference');
+      if (target && target.dataset && target.dataset.verse) {
+        handleVerseClick(target.dataset.verse);
+      }
+    };
+    
+    // Add a custom event handler for verse clicks
+    const handleCustomVerseClick = (e) => {
+      if (e.detail && e.detail.verse) {
+        handleVerseClick(e.detail.verse);
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('click', handleGlobalVerseClick);
+    document.addEventListener('verse-click', handleCustomVerseClick);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('click', handleGlobalVerseClick);
+      document.removeEventListener('verse-click', handleCustomVerseClick);
+    };
+  }, []);
+
+  // Process content to identify and make verse references clickable
+  const processContentWithVerseReferences = (content) => {
+    if (!content || typeof content !== 'string') return content;
+    
+    if (!containsVerseReferences(content)) {
+      return content;
+    }
+
+    const references = extractVerseReferences(content);
+    
+    // Sort references by length (descending) to handle overlapping references
+    const sortedReferences = [...references].sort((a, b) => b.length - a.length);
+
+    // Store the matches for each reference to avoid double-processing
+    const matches = {};
+
+    // First identify all references in the content 
+    sortedReferences.forEach(ref => {
+      // Escape special regex characters in the reference
+      const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Use more precise regex that requires word boundaries to avoid capturing preceding words
+      const regex = new RegExp(`(^|\\s|[;:.,>"'])(${escapedRef})\\b`, 'g');
+      
+      // Find all matches in the content
+      let match;
+      matches[ref] = [];
+      while ((match = regex.exec(content)) !== null) {
+        // The actual reference is in the second capturing group
+        const actualRef = match[2];
+        const startIndex = match.index + match[1].length; // Skip the preceding character/space
+        
+        matches[ref].push({
+          index: startIndex,
+          length: actualRef.length,
+          text: actualRef,
+          fullMatch: match[0],
+          beforeText: match[1]
+        });
+      }
+    });
+    
+    // No references found in the actual content
+    if (Object.values(matches).every(arr => arr.length === 0)) {
+      return content;
+    }
+    
+    // Process the content to replace references with clickable spans
+    // We'll build a new string character by character
+    let result = '';
+    let skipTo = 0;
+    
+    for (let i = 0; i < content.length; i++) {
+      // Skip if we've already processed this part
+      if (i < skipTo) continue;
+      
+      // Check if any reference starts at this position
+      let matched = false;
+      
+      for (const ref of sortedReferences) {
+        for (const match of matches[ref]) {
+          if (match.index === i) {
+            // Create a clickable span for this reference
+            const span = `<span class="verse-reference" data-verse="${ref}" onclick="(function(e) { var event = new CustomEvent('verse-click', { detail: { verse: '${ref}' } }); document.dispatchEvent(event); })(event)" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
+            result += span;
+            
+            // Skip the length of the reference
+            skipTo = i + match.length;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      
+      // If no reference matched at this position, just add the character
+      if (!matched && i >= skipTo) {
+        result += content[i];
+      }
+    }
+    
+    return result;
+  };
+
+  // Handle verse reference click
+  const handleVerseClick = (verseRef) => {
+    setSelectedVerse(verseRef);
+    setIsVerseModalOpen(true);
+  };
+
+  // Check server health when component mounts
   useEffect(() => {
     const checkServerHealth = async () => {
       try {
@@ -434,20 +557,13 @@ const VisualParallels = () => {
 
   // Helper function to render markdown content
   const renderMarkdown = (content) => {
+    if (!content || typeof content !== 'string') return null;
+
+    // Process content for verse references
+    const processedContent = processContentWithVerseReferences(content);
+    
     return (
-      <ReactMarkdown 
-        remarkPlugins={[remarkGfm]}
-        components={{
-          p: ({node, ...props}) => <p className="mb-2" {...props} />,
-          ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-2" {...props} />,
-          ol: ({node, ...props}) => <ol className="list-decimal pl-5 mb-2" {...props} />,
-          li: ({node, ...props}) => <li className="mb-1" {...props} />,
-          a: ({node, ...props}) => <a className="text-indigo-600 hover:underline" {...props} />,
-          blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2" {...props} />
-        }}
-      >
-        {content}
-      </ReactMarkdown>
+      <div dangerouslySetInnerHTML={{ __html: processedContent }} />
     );
   };
 
@@ -610,7 +726,15 @@ const VisualParallels = () => {
                     Key Verses
                   </h4>
                   <ul className="list-disc pl-5 text-gray-700">
-                    {renderKeyVerses(parallelData.elementA.keyVerses)}
+                    {parallelData.elementA.keyVerses.map((verse, index) => (
+                      <li key={index} className="mb-1">
+                        {containsVerseReferences(verse) ? (
+                          <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(verse) }} />
+                        ) : (
+                          verse
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 </div>
                 
@@ -619,7 +743,11 @@ const VisualParallels = () => {
                     Keywords
                   </h4>
                   <div className="flex flex-wrap">
-                    {renderKeywords(parallelData.elementA.keywords)}
+                    {parallelData.elementA.keywords.map((keyword, index) => (
+                      <span key={index} className="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700 mr-2 mb-2">
+                        {keyword}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -657,7 +785,15 @@ const VisualParallels = () => {
                     Key Verses
                   </h4>
                   <ul className="list-disc pl-5 text-gray-700">
-                    {renderKeyVerses(parallelData.elementB.keyVerses)}
+                    {parallelData.elementB.keyVerses.map((verse, index) => (
+                      <li key={index} className="mb-1">
+                        {containsVerseReferences(verse) ? (
+                          <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(verse) }} />
+                        ) : (
+                          verse
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 </div>
                 
@@ -666,7 +802,11 @@ const VisualParallels = () => {
                     Keywords
                   </h4>
                   <div className="flex flex-wrap">
-                    {renderKeywords(parallelData.elementB.keywords)}
+                    {parallelData.elementB.keywords.map((keyword, index) => (
+                      <span key={index} className="inline-block bg-gray-200 rounded-full px-3 py-1 text-sm font-semibold text-gray-700 mr-2 mb-2">
+                        {keyword}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -737,6 +877,13 @@ const VisualParallels = () => {
           </div>
         )}
       </div>
+      
+      {/* Bible Verse Modal */}
+      <BibleVerseModal 
+        isOpen={isVerseModalOpen}
+        onClose={() => setIsVerseModalOpen(false)}
+        verseReference={selectedVerse}
+      />
     </div>
   );
 };
