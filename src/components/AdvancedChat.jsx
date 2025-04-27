@@ -231,19 +231,8 @@ const AdvancedChat = () => {
       processedContent = processedContent.replace(regex, replacement);
     });
 
-    return (
-      <div 
-        dangerouslySetInnerHTML={{ __html: processedContent }}
-        onClick={(e) => {
-          // Find the closest verse reference element
-          const target = e.target.closest('.verse-reference') || e.target;
-          if (target.classList && target.classList.contains('verse-reference')) {
-            handleVerseClick(target.dataset.verse);
-          }
-        }}
-        className={`prose-verse-references ${hasHTML ? 'preserve-html' : ''}`}
-      />
-    );
+    // Return the processed HTML content instead of a React element
+    return processedContent;
   };
 
   return (
@@ -322,7 +311,19 @@ const AdvancedChat = () => {
                               .join('');
                             
                             if (containsVerseReferences(content)) {
-                              return renderMessageWithClickableVerses(content);
+                              const processedContent = renderMessageWithClickableVerses(content);
+                              return (
+                                <p 
+                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
+                                  onClick={(e) => {
+                                    const target = e.target.closest('.verse-reference') || e.target;
+                                    if (target.classList && target.classList.contains('verse-reference')) {
+                                      handleVerseClick(target.dataset.verse);
+                                    }
+                                  }}
+                                  className="prose-verse-references"
+                                />
+                              );
                             }
                             return <p {...props} />;
                           },
@@ -339,7 +340,19 @@ const AdvancedChat = () => {
                               .join('');
                             
                             if (containsVerseReferences(content)) {
-                              return <li>{renderMessageWithClickableVerses(content)}</li>;
+                              const processedContent = renderMessageWithClickableVerses(content);
+                              return (
+                                <li 
+                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
+                                  onClick={(e) => {
+                                    const target = e.target.closest('.verse-reference') || e.target;
+                                    if (target.classList && target.classList.contains('verse-reference')) {
+                                      handleVerseClick(target.dataset.verse);
+                                    }
+                                  }}
+                                  className="prose-verse-references"
+                                />
+                              );
                             }
                             return <li {...props} />;
                           },
@@ -352,7 +365,19 @@ const AdvancedChat = () => {
                                 : '';
                             
                             if (containsVerseReferences(content) || containsVerseReferences(href)) {
-                              return renderMessageWithClickableVerses(content || href);
+                              const processedContent = renderMessageWithClickableVerses(content || href);
+                              return (
+                                <span 
+                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
+                                  onClick={(e) => {
+                                    const target = e.target.closest('.verse-reference') || e.target;
+                                    if (target.classList && target.classList.contains('verse-reference')) {
+                                      handleVerseClick(target.dataset.verse);
+                                    }
+                                  }}
+                                  className="prose-verse-references"
+                                />
+                              );
                             }
                             
                             // Check if href itself is a verse reference
@@ -384,7 +409,19 @@ const AdvancedChat = () => {
                                 : '';
                             
                             if (containsVerseReferences(content)) {
-                              return <strong>{renderMessageWithClickableVerses(content)}</strong>;
+                              const processedContent = renderMessageWithClickableVerses(content);
+                              return (
+                                <strong 
+                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
+                                  onClick={(e) => {
+                                    const target = e.target.closest('.verse-reference') || e.target;
+                                    if (target.classList && target.classList.contains('verse-reference')) {
+                                      handleVerseClick(target.dataset.verse);
+                                    }
+                                  }}
+                                  className="prose-verse-references"
+                                />
+                              );
                             }
                             return <strong {...props}>{children}</strong>;
                           },
@@ -392,7 +429,19 @@ const AdvancedChat = () => {
                           text: ({node, ...props}) => {
                             const content = node.value;
                             if (containsVerseReferences(content)) {
-                              return renderMessageWithClickableVerses(content);
+                              const processedContent = renderMessageWithClickableVerses(content);
+                              return (
+                                <span 
+                                  dangerouslySetInnerHTML={{ __html: processedContent }} 
+                                  onClick={(e) => {
+                                    const target = e.target.closest('.verse-reference') || e.target;
+                                    if (target.classList && target.classList.contains('verse-reference')) {
+                                      handleVerseClick(target.dataset.verse);
+                                    }
+                                  }}
+                                  className="prose-verse-references"
+                                />
+                              );
                             }
                             return <span {...props} />;
                           }
