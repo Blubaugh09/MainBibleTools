@@ -15,10 +15,12 @@ import {
   getDocs,
 } from "firebase/firestore";
 import axios from "axios";
+import BibleVerseModal from '../common/BibleVerseModal';
+import { extractVerseReferences, containsVerseReferences } from '../common/VerseReferenceParser';
 
 /**
  * ThemeThread component
- * Displays a “theme thread” – a JSON object returned by the /api/tools/theme-thread endpoint.
+ * Displays a "theme thread" – a JSON object returned by the /api/tools/theme-thread endpoint.
  * Expected JSON shape:
  * {
  *   theme: string,
@@ -40,6 +42,9 @@ const ThemeThread = () => {
   const [currentThreadId, setCurrentThreadId] = useState(null);
   const [savedThreads, setSavedThreads] = useState([]);
   const [activeTab, setActiveTab] = useState("summary");
+  // Bible verse modal state
+  const [isVerseModalOpen, setIsVerseModalOpen] = useState(false);
+  const [selectedVerse, setSelectedVerse] = useState('');
   const resultsRef = useRef(null);
   const { currentUser } = useAuth();
 
@@ -71,6 +76,127 @@ const ThemeThread = () => {
     checkServerHealth();
     if (currentUser) fetchSavedThreads();
   }, [currentUser]);
+
+  // 3. Setup global verse click handler
+  useEffect(() => {
+    // Add a global click handler for verse references
+    const handleGlobalVerseClick = (e) => {
+      const target = e.target.closest('.verse-reference');
+      if (target && target.dataset && target.dataset.verse) {
+        handleVerseClick(target.dataset.verse);
+      }
+    };
+    
+    // Add a custom event handler for verse clicks
+    const handleCustomVerseClick = (e) => {
+      if (e.detail && e.detail.verse) {
+        handleVerseClick(e.detail.verse);
+      }
+    };
+
+    // Add event listeners
+    document.addEventListener('click', handleGlobalVerseClick);
+    document.addEventListener('verse-click', handleCustomVerseClick);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('click', handleGlobalVerseClick);
+      document.removeEventListener('verse-click', handleCustomVerseClick);
+    };
+  }, []);
+
+  /* --------------------------------------------------
+   * Verse reference handling
+   * -------------------------------------------------- */
+  // Process content to identify and make verse references clickable
+  const processContentWithVerseReferences = (content) => {
+    if (!content || typeof content !== 'string') return content;
+    
+    if (!containsVerseReferences(content)) {
+      return content;
+    }
+
+    const references = extractVerseReferences(content);
+    
+    // Sort references by length (descending) to handle overlapping references
+    const sortedReferences = [...references].sort((a, b) => b.length - a.length);
+
+    // Store the matches for each reference to avoid double-processing
+    const matches = {};
+
+    // First identify all references in the content 
+    sortedReferences.forEach(ref => {
+      // Escape special regex characters in the reference
+      const escapedRef = ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Use more precise regex that requires word boundaries to avoid capturing preceding words
+      const regex = new RegExp(`(^|\\s|[;:.,>"'])(${escapedRef})\\b`, 'g');
+      
+      // Find all matches in the content
+      let match;
+      matches[ref] = [];
+      while ((match = regex.exec(content)) !== null) {
+        // The actual reference is in the second capturing group
+        const actualRef = match[2];
+        const startIndex = match.index + match[1].length; // Skip the preceding character/space
+        
+        matches[ref].push({
+          index: startIndex,
+          length: actualRef.length,
+          text: actualRef,
+          fullMatch: match[0],
+          beforeText: match[1]
+        });
+      }
+    });
+    
+    // No references found in the actual content
+    if (Object.values(matches).every(arr => arr.length === 0)) {
+      return content;
+    }
+    
+    // Process the content to replace references with clickable spans
+    // We'll build a new string character by character
+    let result = '';
+    let skipTo = 0;
+    
+    for (let i = 0; i < content.length; i++) {
+      // Skip if we've already processed this part
+      if (i < skipTo) continue;
+      
+      // Check if any reference starts at this position
+      let matched = false;
+      
+      for (const ref of sortedReferences) {
+        for (const match of matches[ref]) {
+          if (match.index === i) {
+            // Create a clickable span for this reference
+            const span = `<span class="verse-reference" data-verse="${ref}" onclick="(function(e) { var event = new CustomEvent('verse-click', { detail: { verse: '${ref}' } }); document.dispatchEvent(event); })(event)" style="color: #4f46e5; cursor: pointer; text-decoration: underline; font-weight: 500;">${match.text}</span>`;
+            result += span;
+            
+            // Skip the length of the reference
+            skipTo = i + match.length;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      
+      // If no reference matched at this position, just add the character
+      if (!matched && i >= skipTo) {
+        result += content[i];
+      }
+    }
+    
+    return result;
+  };
+
+  // Handle verse reference click
+  const handleVerseClick = (verseRef) => {
+    setSelectedVerse(verseRef);
+    setIsVerseModalOpen(true);
+  };
 
   /* --------------------------------------------------
    * Firestore helpers
@@ -142,7 +268,13 @@ const ThemeThread = () => {
     return (
       <ul className="space-y-1 list-disc list-inside">
         {items.map((it, idx) => (
-          <li key={idx}>{it}</li>
+          <li key={idx}>
+            {containsVerseReferences(it) ? (
+              <span dangerouslySetInnerHTML={{ __html: processContentWithVerseReferences(it) }} />
+            ) : (
+              it
+            )}
+          </li>
         ))}
       </ul>
     );
@@ -154,7 +286,13 @@ const ThemeThread = () => {
       <div className="space-y-1">
         {threadData.occurrences.map((o, i) => (
           <div key={i} className="border-b py-1 text-sm">
-            <span className="font-medium">{o.ref}</span> – {o.book} {o.chapter}:{o.verse}
+            <span 
+              className="font-medium cursor-pointer verse-reference" 
+              data-verse={o.ref}
+              onClick={() => handleVerseClick(o.ref)}
+            >
+              {o.ref}
+            </span> – {o.book} {o.chapter}:{o.verse}
           </div>
         ))}
       </div>
@@ -238,7 +376,24 @@ const ThemeThread = () => {
       case "summary":
         return (
           <div className="prose max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{threadData.summary}</ReactMarkdown>
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({node, ...props}) => {
+                  const rawContent = node.children
+                    .map(n => n.type === 'text' ? n.value : '')
+                    .join('');
+                  
+                  if (containsVerseReferences(rawContent)) {
+                    const processedContent = processContentWithVerseReferences(rawContent);
+                    return <p dangerouslySetInnerHTML={{ __html: processedContent }} />;
+                  }
+                  return <p {...props} />;
+                }
+              }}
+            >
+              {threadData.summary}
+            </ReactMarkdown>
           </div>
         );
       case "occurrences":
@@ -384,6 +539,13 @@ const ThemeThread = () => {
           )}
         </div>
       </div>
+
+      {/* Bible Verse Modal */}
+      <BibleVerseModal 
+        isOpen={isVerseModalOpen}
+        onClose={() => setIsVerseModalOpen(false)}
+        verseReference={selectedVerse}
+      />
     </div>
   );
 };
