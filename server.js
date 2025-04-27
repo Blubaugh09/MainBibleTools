@@ -1104,8 +1104,12 @@ app.post('/api/tools/personal-study', async (req, res) => {
 
 // Handle SPA routing in production
 if (process.env.NODE_ENV === 'production') {
+  // Serve static files
+  app.use(express.static(path.join(__dirname, 'dist')));
+  
+  // For all other routes, render the index.html file
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
   });
 }
 
